@@ -286,6 +286,19 @@ static void cmd_help() {
     term->println("  GFX               Test graphics mode");
     term->set_color(WHITE);
 }
+/*
+static void cmd_diskpart(ATADriver* ata) { // partitionne en FAT32, si au cas ou un disque ne serais pas formaté, ça peut être utile pour les tests, même si c'est pas une priorité
+    if (!ata || !ata->is_present()) {
+        term->println("No disk found.");
+        return;
+    }
+    if (!require_fs()) return;
+    term->set_color(LIGHT_CYAN);
+    term->println("=== Disk Partition Info ===");
+    term->set_color(WHITE);
+    fs->mount(ata); // Remonter pour être sûr d'avoir les infos à jour
+}*/
+
 
 static void cmd_clear() {
     term->clear();
@@ -343,7 +356,11 @@ static void cmd_del(const char* path) {
 
     char resolved[256];
     pm->resolve(path, resolved);
-
+    if (fs->get_attributes(resolved) == -1) {
+        term->print("THIS IS A DIRECTORY: ");
+        term->println(path);
+        return;
+    }
     if (fs->remove(resolved)) {
         term->print("Deleted: ");
         term->println(path);
