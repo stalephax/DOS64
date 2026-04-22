@@ -368,7 +368,8 @@ static void cmd_del(const char* path) {
         term->println("Delete failed. File may not exist or is a directory.");
     }
 }
-static void cmd_shutdown(bool reboot) {
+static void cmd_shutdown(char bootmode) {
+ bool reboot = (bootmode == 'r' || bootmode == 'R');
     if (reboot) {
         term->set_color(BLUE);
         term->println("Rebooting...");
