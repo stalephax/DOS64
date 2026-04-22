@@ -2,7 +2,7 @@
 #include "../prompt.h"
 #include "../drivers/ata.h"
 #include "../standart.h"
-
+#include "vdrive.h"
 // =============================================
 // Structure du Boot Parameter Block (BPB)
 // =============================================
@@ -81,7 +81,7 @@ struct FAT32_File {
 // Driver FAT32
 // =============================================
 class FAT32 {
-    ATADriver* disk;
+    DiskDrive* disk;
     FAT32_BPB  bpb;
     bool       mounted = false;
 
@@ -484,7 +484,7 @@ bool remove(const char* path) {
     return -1; // à implémenter : trouver le fichier et retourner ses attributs    
     }
     bool mount(ATADriver* d) {
-        disk = d;
+        disk = (DiskDrive*)d;
 
         // Lire le boot sector
         if (!read_sector(0)) return false;

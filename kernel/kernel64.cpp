@@ -50,6 +50,12 @@ static unsigned char mouse_buf[sizeof(PS2Mouse)];
 static unsigned char acpi_buf[sizeof(ACPI)];
 static unsigned char cursor_buf[sizeof(MouseCursor)];
 static unsigned char path_buf[sizeof(PathManager)];
+static unsigned char ramdisk_buf[RAMDISK_SIZE];   // 1 Mo en BSS
+static unsigned char ram_buf[sizeof(RamDisk)];
+static unsigned char ramfs_buf[sizeof(FAT32)];
+static unsigned char ata_if_buf[sizeof(ATADiskIF)];
+static unsigned char ram_if_buf[sizeof(RamDiskIF)];
+
 
 PathManager* pm;
 MouseCursor* cursor;
@@ -65,6 +71,10 @@ VGAGraphics* vga; // pour les tests de vidéo
 Beeper* beep; // pour les tests de son
 PS2Mouse* mouse; // pour les tests de souris
 ACPI* acpi; // pour les tests d'ACPI, même remarque que pour FAT32.h
+RamDisk* ramdisk;
+FAT32*   ramfs;
+ATADiskIF* ata_if;
+RamDiskIF* ram_if;
 bool power = false; // pour le moment on peut pas éteindre la machine, par manque de prise en charge de l'ACPI, mais ça peut servir pour un reboot ou une mise en veille plus tard
 
 // Palette de couleurs VGA 4 bit
@@ -165,6 +175,17 @@ void init(unsigned long long mb_addr) {
     cursor = new (cursor_buf) MouseCursor;
     pm = new (path_buf) PathManager;
     pm->init();
+    ramdisk = new (ram_buf) RamDisk;
+    ramdisk->init(ramdisk_buf, RAMDISK_SIZE);
+    RamDiskFormatter::format(ramdisk);
+
+    ramfs = new (ramfs_buf) FAT32;
+    RamDiskIF* ram_if = new (ram_if_buf) RamDiskIF(ramdisk);
+    if (ramfs->mount((ATADriver*)ram_if)) {
+    print("A: RAM disk ready", 6, t_color(LIGHT_GREEN));
+    } else {
+        print("A: RAM disk failed", 6, t_color(LIGHT_RED));
+    }
     delay(9000000);
     print("Boot complete!", 8, t_color(LIGHT_GREEN, GREEN));
     delay(9000000);
@@ -270,6 +291,7 @@ static void cmd_help() {
     term->set_color(YELLOW);  term->println("");
     term->set_color(YELLOW);  term->println("-- Disk & Filesystem --");
     term->set_color(WHITE);
+    term->println("  VOLS              List available volumes");
     term->println("  MOUNT             Initialize ATA driver and mount C:");
     term->println("  DIR [path]        List files in current or given directory");
     term->println("  CD [path]         Change current directory (CD .. to go up)");
@@ -382,6 +404,9 @@ static void cmd_shutdown(char bootmode) {
         term->clear();
         print("  It is now safe to turn off your computer.", 0, t_color(YELLOW));
         power = false;
+        delay(90000000);
+        delay(90000000);
+        delay(90000000);
         acpi->shutdown();
     }
 }
@@ -487,7 +512,31 @@ static void cmd_type(const char* path) {
         term->println("Error reading file.");
     }
 }
+static void cmd_vols() {
+    term->set_color(LIGHT_CYAN);
+    term->println("=== Available Volumes ===");
+    term->set_color(WHITE);
 
+    term->print("  A: ");
+    if (ramdisk && ramdisk->is_present()) {
+        term->print("[RAM DISK]  ");
+        char sz[16];
+        ulltoa(RAMDISK_SIZE / 1024, sz);
+        term->print(sz);
+        term->println(" KB");
+    } else {
+        term->println("[Not available]");
+    }
+
+    term->print("  C: ");
+    if (fs && fs->is_mounted()) {
+        term->print("[FAT32 HDD] ");
+        if (ata) term->println(ata->get_model());
+        else term->println("");
+    } else {
+        term->println("[Not mounted]");
+    }
+}
 static void cmd_mkdir(const char* name) {
     if (!require_fs()) return;
     if (!require_arg(name, 0)) return;
@@ -650,6 +699,7 @@ void interpret_command(const char* cmd) {
     else if (strcmp(cmd, "reboot") == 0)            cmd_shutdown(true);
 
     // --- Filesystem ---
+    else if (strcmp(cmd, "vols") == 0)              cmd_vols();
     else if (strcmp(cmd, "mount") == 0)             cmd_mount();
     else if (strcmp(cmd, "dir") == 0)               cmd_dir(nullptr);
     else if (strncmp(cmd, "dir ", 4) == 0)          cmd_dir(cmd + 4);
