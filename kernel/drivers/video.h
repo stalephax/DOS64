@@ -1,4 +1,5 @@
 #pragma once
+#include "io.h"
 
 // VGA Mode 13h — 320x200 pixels, 256 couleurs
 // Accessible directement en mémoire, pas besoin du BIOS en mode 64 bit
