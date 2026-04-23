@@ -1,6 +1,5 @@
 #pragma once
 #include "../prompt.h"
-#include "../drivers/ata.h"
 #include "../standart.h"
 #include "vdrive.h"
 // =============================================
@@ -483,20 +482,16 @@ bool remove(const char* path) {
     if (!path || !path[0]) return FAT_ATTR_DIRECTORY; // racine
     return -1; // à implémenter : trouver le fichier et retourner ses attributs    
     }
-    bool mount(ATADriver* d) {
-        disk = (DiskDrive*)d;
-
-        // Lire le boot sector
+    bool mount(DiskDrive* d) {
+        disk = d;
         if (!read_sector(0)) return false;
-
-        // Copier le BPB
         memcpy(&bpb, sector_buf, sizeof(FAT32_BPB));
 
-        // Vérifier signature FAT32
-        if (bpb.bytes_per_sector != 512) return false;
-        if (bpb.fat_size_32 == 0)        return false;
+        // Gardes-fous contre division par zéro
+        if (bpb.bytes_per_sector == 0)    return false;
+        if (bpb.sectors_per_cluster == 0) return false;
+        if (bpb.fat_size_32 == 0)         return false;
 
-        // Calculer les positions
         fat_start    = bpb.reserved_sectors;
         data_start   = fat_start + bpb.fat_count * bpb.fat_size_32;
         root_cluster = bpb.root_cluster;

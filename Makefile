@@ -1,7 +1,7 @@
 CC      = gcc
 CXX     = g++
 ASM     = nasm
-CXXFLAGS = -ffreestanding -fno-exceptions -fno-rtti -nostdlib -mcmodel=kernel -mno-red-zone -fno-pic -Ikernel -Ikernel/drivers
+CXXFLAGS = -ffreestanding -fno-exceptions -fno-rtti -nostdlib -mcmodel=kernel -mno-red-zone -fno-pic -Ikernel -Ikernel/drivers -Ikernel/fs
 LDFLAGS  = -T link.ld -nostdlib -z max-page-size=0x1000
 
 OBJS = boot/booter.o boot/idt.o kernel/kernel64.o kernel/standart.o
