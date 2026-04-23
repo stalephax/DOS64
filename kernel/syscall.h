@@ -41,6 +41,9 @@ extern Terminal* term;
 extern HeapAllocator* heap;
 extern Keyboard* kbd;
 extern bool power;
+extern VGAGraphics* video;
+extern PS2Mouse* mouse;
+extern MemorySystem* mm;
 
 // Contexte d'un programme en cours d'exécution
 struct ProgramContext {
