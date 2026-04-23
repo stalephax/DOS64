@@ -353,6 +353,69 @@ static void next_component(const char* path, char* component, const char** rest)
         *rest = path + i;
 }
 public:
+    // Écraser un fichier existant (MVP)
+    // Limite volontaire: la taille écrite ne peut pas dépasser la capacité
+    // de la chaîne de clusters déjà allouée au fichier.
+    bool overwrite_file(const char* path, const unsigned char* data, unsigned int size) {
+        if (!mounted) return false;
+
+        FAT32_File f = open(path);
+        if (!f.valid) return false;
+
+        // Calculer la capacité actuelle de la chaîne de clusters
+        unsigned int capacity = 0;
+        unsigned int c = f.cluster;
+        while (c >= 2 && c < 0x0FFFFFF8) {
+            capacity += bpb.sectors_per_cluster * bpb.bytes_per_sector;
+            c = fat_next(c);
+        }
+        if (size > capacity) return false; // pas d'extension de chaîne dans cette version
+
+        // Écrire les données cluster par cluster
+        unsigned int written = 0;
+        c = f.cluster;
+        while (c >= 2 && c < 0x0FFFFFF8 && written < size) {
+            unsigned int lba = cluster_to_lba(c);
+            for (int s = 0; s < bpb.sectors_per_cluster && written < size; s++) {
+                for (int i = 0; i < 512; i++) sector_buf[i] = 0;
+                unsigned int to_copy = size - written;
+                if (to_copy > bpb.bytes_per_sector) to_copy = bpb.bytes_per_sector;
+                memcpy(sector_buf, data + written, to_copy);
+                if (!disk->write(lba + s, 1, sector_buf)) return false;
+                written += to_copy;
+            }
+            c = fat_next(c);
+        }
+
+        // Mettre à jour la taille du fichier dans son entrée de répertoire
+        char leaf[13];
+        unsigned int parent_cluster = get_parent_cluster(path, leaf);
+        if (!parent_cluster) return false;
+
+        unsigned int dir_cluster = parent_cluster;
+        while (dir_cluster < 0x0FFFFFF8) {
+            unsigned int lba = cluster_to_lba(dir_cluster);
+            for (int s = 0; s < bpb.sectors_per_cluster; s++) {
+                if (!read_sector(lba + s)) return false;
+                FAT32_DirEntry* entries = (FAT32_DirEntry*)sector_buf;
+                int count = bpb.bytes_per_sector / sizeof(FAT32_DirEntry);
+                for (int i = 0; i < count; i++) {
+                    FAT32_DirEntry* e = &entries[i];
+                    if (e->name[0] == 0x00) return false;
+                    if (e->name[0] == 0xE5) continue;
+                    if (e->attributes == FAT_ATTR_LFN) continue;
+                    if (name_match(e, leaf)) {
+                        e->file_size = size;
+                        return disk->write(lba + s, 1, sector_buf);
+                    }
+                }
+            }
+            dir_cluster = fat_next(dir_cluster);
+        }
+
+        return false;
+    }
+
     // Créer un répertoire
     bool mkdir(const char* path) {
     if (!mounted) return false;

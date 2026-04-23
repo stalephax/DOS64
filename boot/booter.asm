@@ -23,7 +23,10 @@ stack_top:
 align 4096
 pml4_table:     resb 4096   ; Page Map Level 4
 pdp_table:      resb 4096   ; Page Directory Pointer
-pd_table:       resb 4096   ; Page Directory
+pd_table0:      resb 4096   ; PD pour 0..1 Gio
+pd_table1:      resb 4096   ; PD pour 1..2 Gio
+pd_table2:      resb 4096   ; PD pour 2..3 Gio
+pd_table3:      resb 4096   ; PD pour 3..4 Gio
 
 ; =============================================
 ; GDT 64 BIT
@@ -70,20 +73,48 @@ _start:
     or  eax, 0b11
     mov [pml4_table], eax
 
-    ; PDP[0] → PD
-    mov eax, pd_table
+    ; PDP[0..3] → PD0..PD3  (identity map 4 Gio via pages 2 Mio)
+    mov eax, pd_table0
     or  eax, 0b11
     mov [pdp_table], eax
 
-    ; PD[0..511] → pages 2 Mo (identity mapping)
+    mov eax, pd_table1
+    or  eax, 0b11
+    mov [pdp_table + 8], eax
+
+    mov eax, pd_table2
+    or  eax, 0b11
+    mov [pdp_table + 16], eax
+
+    mov eax, pd_table3
+    or  eax, 0b11
+    mov [pdp_table + 24], eax
+
+    ; PD[0..2047] → pages 2 Mio (identity mapping jusqu'à 4 Gio)
     mov ecx, 0
 .map_pd:
     mov eax, 0x200000
     imul eax, ecx           ; eax = 2Mo * ecx  (correct même pour ecx=0)
     or   eax, 0b10000011    ; present + writable + huge page
-    mov  [pd_table + ecx*8], eax
-    inc  ecx
     cmp  ecx, 512
+    jb   .pd0
+    cmp  ecx, 1024
+    jb   .pd1
+    cmp  ecx, 1536
+    jb   .pd2
+    mov  [pd_table3 + (ecx - 1536)*8], eax
+    jmp  .next_pd
+.pd2:
+    mov  [pd_table2 + (ecx - 1024)*8], eax
+    jmp  .next_pd
+.pd1:
+    mov  [pd_table1 + (ecx - 512)*8], eax
+    jmp  .next_pd
+.pd0:
+    mov  [pd_table0 + ecx*8], eax
+.next_pd:
+    inc  ecx
+    cmp  ecx, 2048
     jne  .map_pd
 
     ; --- 3. Charger CR3 avec PML4 ---

@@ -4,6 +4,8 @@
 #include "standart.h"
 #include "drivers/io.h"
 #include "drivers/keyboard.h"
+#include "drivers/video.h"
+#include "fs/FAT32.h"
 #include "panic.h"
 // Numéros de syscall
 #define SYS_PRINT   0
@@ -13,12 +15,21 @@
 #define SYS_EXIT    4
 #define SYS_GETCHAR 5
 #define SYS_GETLINE 6
+#define SYS_GFX_INIT     7
+#define SYS_GFX_CLEAR    8
+#define SYS_GFX_PIXEL    9
+#define SYS_FS_READ      10
+#define SYS_FS_WRITE     11
+#define SYS_GFX_TEXTMODE 12
 
 // Objets kernel (définis dans kernel64.cpp)
 extern Terminal* term;
 extern HeapAllocator* heap;
 extern Keyboard* kbd;
+extern VGAGraphics* vga;
+extern FAT32* fs;
 extern bool power;
+extern "C" VGAGraphics* ensure_vga();
 
 // Contexte d'un programme en cours d'exécution
 struct ProgramContext {
@@ -84,6 +95,61 @@ extern "C" void interrupt_handler_syscall(
             term->putchar('\n');
             break;
         }
+
+        case SYS_GFX_INIT:
+            ensure_vga()->init();
+            break;
+
+        case SYS_GFX_CLEAR:
+            ensure_vga()->clear((unsigned char)arg1);
+            break;
+
+        case SYS_GFX_PIXEL:
+            ensure_vga()->set_pixel((int)arg1, (int)arg2, (unsigned char)arg3);
+            break;
+
+        case SYS_FS_READ: {
+            if (!fs || !arg1 || !arg2) {
+                asm volatile("mov $-1, %%rax" ::: "rax");
+                break;
+            }
+            FAT32_File f = fs->open((const char*)arg1);
+            if (!f.valid) {
+                asm volatile("mov $-1, %%rax" ::: "rax");
+                break;
+            }
+            unsigned int max_size = (unsigned int)arg3;
+            unsigned int to_read = f.file_size < max_size ? f.file_size : max_size;
+            if (!fs->read_file(&f, (void*)arg2, to_read)) {
+                asm volatile("mov $-1, %%rax" ::: "rax");
+                break;
+            }
+            asm volatile("mov %0, %%rax" :: "r"((unsigned long long)to_read) : "rax");
+            break;
+        }
+
+        case SYS_FS_WRITE: {
+            if (!fs || !arg1 || !arg2) {
+                asm volatile("mov $-1, %%rax" ::: "rax");
+                break;
+            }
+            unsigned int size = (unsigned int)arg3;
+            bool ok = fs->overwrite_file((const char*)arg1, (const unsigned char*)arg2, size);
+            if (!ok) {
+                asm volatile("mov $-1, %%rax" ::: "rax");
+                break;
+            }
+            asm volatile("mov %0, %%rax" :: "r"((unsigned long long)size) : "rax");
+            break;
+        }
+
+        case SYS_GFX_TEXTMODE:
+            ensure_vga()->text_mode();
+            term->set_color(0x0F);
+            term->clear();
+            term->update_cursor();
+            break;
+
     }
 }
 
