@@ -1,9 +1,100 @@
 // DOS64 - GFX editor ELF userland demo
 // ESC: quit | ENTER: new line | BACKSPACE: erase
-#include "std.h"
 
+#define SYS_GETCHAR 5
+#define SYS_GFX_INIT 7
+#define SYS_GFX_CLEAR 8
+#define SYS_GFX_PIXEL 9
+#define SYS_FS_READ 10
+#define SYS_FS_WRITE 11
+#define SYS_GFX_TEXTMODE 12
+#define SYS_EXIT 4
 
+static inline void sys_exit(int code) {
+    asm volatile(
+        "mov $4, %%rax\n"
+        "mov %0, %%rdi\n"
+        "int $0x80\n"
+        :: "r"((long long)code) : "rax", "rdi"
+    );
+}
 
+static inline char sys_getchar() {
+    unsigned long long out;
+    asm volatile(
+        "mov $5, %%rax\n"
+        "int $0x80\n"
+        "mov %%rax, %0\n"
+        : "=r"(out)
+        :
+        : "rax"
+    );
+    return (char)out;
+}
+
+static inline void sys_gfx_init() {
+    asm volatile("mov $7, %%rax\nint $0x80\n" ::: "rax");
+}
+
+static inline void sys_gfx_clear(unsigned char color) {
+    asm volatile(
+        "mov $8, %%rax\n"
+        "mov %0, %%rdi\n"
+        "int $0x80\n"
+        :: "r"((unsigned long long)color) : "rax", "rdi"
+    );
+}
+
+static inline void sys_gfx_pixel(int x, int y, unsigned char color) {
+    asm volatile(
+        "mov $9, %%rax\n"
+        "mov %0, %%rdi\n"
+        "mov %1, %%rsi\n"
+        "mov %2, %%rdx\n"
+        "int $0x80\n"
+        ::
+          "r"((unsigned long long)x),
+          "r"((unsigned long long)y),
+          "r"((unsigned long long)color)
+        : "rax", "rdi", "rsi", "rdx"
+    );
+}
+
+static inline long long sys_fs_read(const char* path, void* buf, unsigned long long max_size) {
+    unsigned long long out;
+    asm volatile(
+        "mov $10, %%rax\n"
+        "mov %1, %%rdi\n"
+        "mov %2, %%rsi\n"
+        "mov %3, %%rdx\n"
+        "int $0x80\n"
+        "mov %%rax, %0\n"
+        : "=r"(out)
+        : "r"(path), "r"(buf), "r"(max_size)
+        : "rax", "rdi", "rsi", "rdx"
+    );
+    return (long long)out;
+}
+
+static inline long long sys_fs_write(const char* path, const void* buf, unsigned long long size) {
+    unsigned long long out;
+    asm volatile(
+        "mov $11, %%rax\n"
+        "mov %1, %%rdi\n"
+        "mov %2, %%rsi\n"
+        "mov %3, %%rdx\n"
+        "int $0x80\n"
+        "mov %%rax, %0\n"
+        : "=r"(out)
+        : "r"(path), "r"(buf), "r"(size)
+        : "rax", "rdi", "rsi", "rdx"
+    );
+    return (long long)out;
+}
+
+static inline void sys_gfx_textmode() {
+    asm volatile("mov $12, %%rax\nint $0x80\n" ::: "rax");
+}
 
 static void draw_rect(int x, int y, int w, int h, unsigned char c) {
     for (int yy = y; yy < y + h; yy++)
@@ -82,6 +173,10 @@ static void draw_text(int x, int y, const char* s, unsigned char fg, unsigned ch
 
 extern "C" int main() {
     static char text[20][52];
+    static char file_buf[20 * 53];
+    const char* path = "C:/GEDIT.TXT";
+    const char* status = "CTRL+S SAVE | CTRL+L LOAD | ESC QUIT";
+
     for (int y = 0; y < 20; y++)
         for (int x = 0; x < 52; x++)
             text[y][x] = ' ';
@@ -93,7 +188,8 @@ extern "C" int main() {
         sys_gfx_clear(1); // blue
         draw_rect(0, 0, 320, 12, 15); // title bar
         draw_rect(0, 12, 320, 188, 0); // text area
-        draw_text(4, 2, "GEDIT.ELF - ESC QUIT", 1, 15);
+        draw_text(4, 2, "GEDIT.ELF", 1, 15);
+        draw_text(80, 2, status, 1, 15);
 
         for (int y = 0; y < 20; y++)
             for (int x = 0; x < 52; x++)
@@ -104,6 +200,35 @@ extern "C" int main() {
         char c = sys_getchar();
         if (!c) continue;
         if (c == 27) break; // ESC
+        if (c == 19) { // Ctrl+S
+            int p = 0;
+            for (int y = 0; y < 20; y++) {
+                for (int x = 0; x < 52; x++) file_buf[p++] = text[y][x];
+                file_buf[p++] = '\n';
+            }
+            long long w = sys_fs_write(path, file_buf, (unsigned long long)p);
+            status = (w >= 0) ? "SAVED C:/GEDIT.TXT" : "SAVE FAILED (need existing file & enough size)";
+            continue;
+        }
+        if (c == 12) { // Ctrl+L
+            long long r = sys_fs_read(path, file_buf, sizeof(file_buf));
+            if (r > 0) {
+                int p = 0;
+                for (int y = 0; y < 20; y++) {
+                    for (int x = 0; x < 52; x++) {
+                        char ch = (p < r) ? file_buf[p++] : ' ';
+                        if (ch == '\n' || ch == '\r') ch = ' ';
+                        text[y][x] = ch;
+                    }
+                    while (p < r && file_buf[p] != '\n') p++;
+                    if (p < r && file_buf[p] == '\n') p++;
+                }
+                status = "LOADED C:/GEDIT.TXT";
+            } else {
+                status = "LOAD FAILED (file not found?)";
+            }
+            continue;
+        }
         if (c == '\n') { cx = 0; if (cy < 19) cy++; continue; }
         if (c == '\b') {
             if (cx > 0) cx--;
@@ -115,7 +240,8 @@ extern "C" int main() {
             if (cx < 51) cx++;
         }
     }
-    //sys_gfx_exit();
-    suicide(0); //
+
+    sys_gfx_textmode();
+    sys_exit(0);
     return 0;
 }
