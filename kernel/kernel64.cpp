@@ -406,7 +406,6 @@ static void cmd_help() {
     term->println("  WRAW [data]       Write raw data to disk sector 0");
     term->println("  FKUP              Trigger kernel panic (test)");
     term->println("  GFX               Test graphics mode");
-    term->println("  GEDIT             Fullscreen GFX text editor (ESC to quit)");
     term->set_color(WHITE);
 }
 /*
@@ -785,130 +784,6 @@ static void cmd_gfx() {
 }
 
 // ============================================================
-// Mini éditeur plein écran (mode GFX)
-// ESC = quitter, BACKSPACE = effacer, ENTER = nouvelle ligne.
-// (MVP: buffer local, pas encore de sauvegarde fichier)
-// ============================================================
-static void glyph5x7(char c, unsigned char out[7]) {
-    for (int i = 0; i < 7; i++) out[i] = 0;
-    if (c >= 'a' && c <= 'z') c = c - 32;
-
-    switch (c) {
-        case 'A': { unsigned char g[7]={14,17,17,31,17,17,17}; memcpy(out,g,7); } break;
-        case 'B': { unsigned char g[7]={30,17,17,30,17,17,30}; memcpy(out,g,7); } break;
-        case 'C': { unsigned char g[7]={14,17,16,16,16,17,14}; memcpy(out,g,7); } break;
-        case 'D': { unsigned char g[7]={30,17,17,17,17,17,30}; memcpy(out,g,7); } break;
-        case 'E': { unsigned char g[7]={31,16,16,30,16,16,31}; memcpy(out,g,7); } break;
-        case 'F': { unsigned char g[7]={31,16,16,30,16,16,16}; memcpy(out,g,7); } break;
-        case 'G': { unsigned char g[7]={14,17,16,23,17,17,14}; memcpy(out,g,7); } break;
-        case 'H': { unsigned char g[7]={17,17,17,31,17,17,17}; memcpy(out,g,7); } break;
-        case 'I': { unsigned char g[7]={14,4,4,4,4,4,14}; memcpy(out,g,7); } break;
-        case 'J': { unsigned char g[7]={1,1,1,1,17,17,14}; memcpy(out,g,7); } break;
-        case 'K': { unsigned char g[7]={17,18,20,24,20,18,17}; memcpy(out,g,7); } break;
-        case 'L': { unsigned char g[7]={16,16,16,16,16,16,31}; memcpy(out,g,7); } break;
-        case 'M': { unsigned char g[7]={17,27,21,21,17,17,17}; memcpy(out,g,7); } break;
-        case 'N': { unsigned char g[7]={17,25,21,19,17,17,17}; memcpy(out,g,7); } break;
-        case 'O': { unsigned char g[7]={14,17,17,17,17,17,14}; memcpy(out,g,7); } break;
-        case 'P': { unsigned char g[7]={30,17,17,30,16,16,16}; memcpy(out,g,7); } break;
-        case 'Q': { unsigned char g[7]={14,17,17,17,21,18,13}; memcpy(out,g,7); } break;
-        case 'R': { unsigned char g[7]={30,17,17,30,20,18,17}; memcpy(out,g,7); } break;
-        case 'S': { unsigned char g[7]={15,16,16,14,1,1,30}; memcpy(out,g,7); } break;
-        case 'T': { unsigned char g[7]={31,4,4,4,4,4,4}; memcpy(out,g,7); } break;
-        case 'U': { unsigned char g[7]={17,17,17,17,17,17,14}; memcpy(out,g,7); } break;
-        case 'V': { unsigned char g[7]={17,17,17,17,17,10,4}; memcpy(out,g,7); } break;
-        case 'W': { unsigned char g[7]={17,17,17,21,21,21,10}; memcpy(out,g,7); } break;
-        case 'X': { unsigned char g[7]={17,17,10,4,10,17,17}; memcpy(out,g,7); } break;
-        case 'Y': { unsigned char g[7]={17,17,10,4,4,4,4}; memcpy(out,g,7); } break;
-        case 'Z': { unsigned char g[7]={31,1,2,4,8,16,31}; memcpy(out,g,7); } break;
-        case '0': { unsigned char g[7]={14,17,19,21,25,17,14}; memcpy(out,g,7); } break;
-        case '1': { unsigned char g[7]={4,12,4,4,4,4,14}; memcpy(out,g,7); } break;
-        case '2': { unsigned char g[7]={14,17,1,2,4,8,31}; memcpy(out,g,7); } break;
-        case '3': { unsigned char g[7]={30,1,1,14,1,1,30}; memcpy(out,g,7); } break;
-        case '4': { unsigned char g[7]={2,6,10,18,31,2,2}; memcpy(out,g,7); } break;
-        case '5': { unsigned char g[7]={31,16,16,30,1,1,30}; memcpy(out,g,7); } break;
-        case '6': { unsigned char g[7]={14,16,16,30,17,17,14}; memcpy(out,g,7); } break;
-        case '7': { unsigned char g[7]={31,1,2,4,8,8,8}; memcpy(out,g,7); } break;
-        case '8': { unsigned char g[7]={14,17,17,14,17,17,14}; memcpy(out,g,7); } break;
-        case '9': { unsigned char g[7]={14,17,17,15,1,1,14}; memcpy(out,g,7); } break;
-        case '.': { unsigned char g[7]={0,0,0,0,0,12,12}; memcpy(out,g,7); } break;
-        case ',': { unsigned char g[7]={0,0,0,0,0,12,8}; memcpy(out,g,7); } break;
-        case '-': { unsigned char g[7]={0,0,0,31,0,0,0}; memcpy(out,g,7); } break;
-        case '_': { unsigned char g[7]={0,0,0,0,0,0,31}; memcpy(out,g,7); } break;
-        case ':': { unsigned char g[7]={0,12,12,0,12,12,0}; memcpy(out,g,7); } break;
-        case '/': { unsigned char g[7]={1,2,4,8,16,0,0}; memcpy(out,g,7); } break;
-        case '(': { unsigned char g[7]={2,4,8,8,8,4,2}; memcpy(out,g,7); } break;
-        case ')': { unsigned char g[7]={8,4,2,2,2,4,8}; memcpy(out,g,7); } break;
-        case '!': { unsigned char g[7]={4,4,4,4,4,0,4}; memcpy(out,g,7); } break;
-        case '?': { unsigned char g[7]={14,17,1,2,4,0,4}; memcpy(out,g,7); } break;
-        case ' ': default: break;
-    }
-}
-
-static void draw_char_gfx(int x, int y, char c, unsigned char fg, unsigned char bg) {
-    unsigned char g[7];
-    glyph5x7(c, g);
-    for (int row = 0; row < 7; row++) {
-        for (int col = 0; col < 5; col++) {
-            bool on = (g[row] >> (4 - col)) & 1;
-            vga->set_pixel(x + col, y + row, on ? fg : bg);
-        }
-    }
-}
-
-static void draw_text_gfx(int x, int y, const char* s, unsigned char fg, unsigned char bg) {
-    for (int i = 0; s[i]; i++) draw_char_gfx(x + i * 6, y, s[i], fg, bg);
-}
-
-static void cmd_gedit() {
-    vga = new (vga_buf) VGAGraphics;
-    vga->init();
-    vga->clear(VGAGraphics::BLUE);
-
-    static char text[80 * 20];
-    for (int i = 0; i < 80 * 20; i++) text[i] = ' ';
-
-    int cx = 0, cy = 0;
-    bool running = true;
-
-    while (running) {
-        // UI
-        vga->fill_rect(0, 0, 320, 12, VGAGraphics::WHITE);
-        draw_text_gfx(4, 2, "DOS64 GFX EDITOR - ESC QUIT", VGAGraphics::BLUE, VGAGraphics::WHITE);
-        vga->fill_rect(0, 12, 320, 188, VGAGraphics::BLACK);
-
-        for (int y = 0; y < 20; y++) {
-            for (int x = 0; x < 52; x++) {
-                char c = text[y * 80 + x];
-                draw_char_gfx(4 + x * 6, 16 + y * 8, c, VGAGraphics::GREEN, VGAGraphics::BLACK);
-            }
-        }
-
-        // Curseur
-        int px = 4 + cx * 6;
-        int py = 16 + cy * 8;
-        vga->draw_rect(px - 1, py - 1, 7, 9, VGAGraphics::YELLOW);
-
-        char c = kbd->getchar();
-        if (!c) continue;
-
-        if (c == 27) { // ESC
-            running = false;
-        } else if (c == '\n') {
-            cx = 0;
-            if (cy < 19) cy++;
-        } else if (c == '\b') {
-            if (cx > 0) cx--;
-            text[cy * 80 + cx] = ' ';
-        } else if (c >= 32 && c <= 126) {
-            text[cy * 80 + cx] = c;
-            if (cx < 51) cx++;
-        }
-    }
-
-    term->println("Leaving GFX editor.");
-}
-
-// ============================================================
 // Dispatch principal
 // ============================================================
 
@@ -972,7 +847,6 @@ void interpret_command(const char* cmd) {
     else if (strncmp(cmd, "wraw ", 5) == 0)         cmd_wraw(cmd + 5);
     else if (strcmp(cmd, "fkup") == 0)              kernel_panic("DEBUG TESTING", 0x0);
     else if (strcmp(cmd, "gfx") == 0)               cmd_gfx();
-    else if (strcmp(cmd, "gedit") == 0)             cmd_gedit();
 
     // --- Inconnu ---
     else {
