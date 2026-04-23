@@ -6,6 +6,28 @@
 #define SYS_EXIT    4
 #define SYS_GETCHAR 5
 #define SYS_GETLINE 6
+#define SYS_RUN     7
+#define SYS_DIR     8
+#define SYS_CD      9
+#define SYS_TYPE    10
+#define SYS_MKDIR   11
+#define SYS_RENAME  12
+#define SYS_DEL     13
+#define SYS_POWEROFF 14
+#define SYS_REBOOT   15
+#define SYS_GETCWD   16
+#define SYS_LS       17
+#define SYS_OPEN     18
+#define SYS_CLOSE    19
+#define SYS_READ     20
+#define SYS_WRITE    21
+#define SYS_SEEK     22
+#define SYS_TELL     23
+#define SYS_FILESIZE 24
+#define SYS_GFXMODE  25
+#define GFX_WIDTH 800
+#define GFX_HEIGHT 600
+#define GFX_DRAWPIX 102400
 
 
 static void write(const char* s) {
