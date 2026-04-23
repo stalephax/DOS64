@@ -83,6 +83,11 @@ ATADiskIF* ata_if;
 RamDiskIF* ram_if;
 bool power = false; // pour le moment on peut pas éteindre la machine, par manque de prise en charge de l'ACPI, mais ça peut servir pour un reboot ou une mise en veille plus tard
 
+extern "C" VGAGraphics* ensure_vga() {
+    if (!vga) vga = new (vga_buf) VGAGraphics;
+    return vga;
+}
+
 // Palette de couleurs VGA 4 bit
 
 static const unsigned char BLACK = 0x0;
@@ -339,11 +344,12 @@ void mount_ata() {
 // Helpers internes
 // ============================================================
 
-// Vérifie si un fichier/dossier existe et retourne ses attributs
-// Retourne -1 si introuvable, sinon les attributs FAT32
-static int fat_get_attr(const char* path) {
-    if (!fs || !fs->is_mounted()) return -1;
-    return fs->get_attributes(path);  // à implémenter dans fat32.h
+// Vérifie si un fichier existe dans le volume courant (A: ou C:)
+static bool fat_file_exists(const char* path) {
+    FAT32* cur = current_fs();
+    if (!cur || !cur->is_mounted()) return false;
+    FAT32_File f = cur->open(path);
+    return f.valid;
 }
 
 // Vérifie que le filesystem est monté, affiche un message sinon
@@ -804,8 +810,7 @@ void interpret_command(const char* cmd) {
     if (token[0] && cmd[t] == '\0') {
         // Essai 1 : nom exact (ex: hello.elf)
         pm->resolve(token, resolved);
-        int attr = fat_get_attr(resolved);
-        bool found = (attr >= 0) && !(attr & 0x10); // ignorer les dossiers
+        bool found = fat_file_exists(resolved);
 
         // Essai 2 : ajouter .ELF automatiquement (ex: hello -> hello.ELF)
         if (!found) {
@@ -818,8 +823,7 @@ void interpret_command(const char* cmd) {
             token_with_ext[i] = '\0';
 
             pm->resolve(token_with_ext, resolved);
-            attr = fat_get_attr(resolved);
-            found = (attr >= 0) && !(attr & 0x10);
+            found = fat_file_exists(resolved);
         }
 
         if (found) {
