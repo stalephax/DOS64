@@ -4,6 +4,7 @@
 #include "standart.h"
 #include "drivers/io.h"
 #include "drivers/keyboard.h"
+#include "drivers/video.h"
 #include "panic.h"
 // Numéros de syscall
 #define SYS_PRINT   0
@@ -13,37 +14,17 @@
 #define SYS_EXIT    4
 #define SYS_GETCHAR 5
 #define SYS_GETLINE 6
-#define SYS_RUN     7
-#define SYS_DIR     8
-#define SYS_CD      9
-#define SYS_TYPE    10
-#define SYS_MKDIR   11
-#define SYS_RENAME  12
-#define SYS_DEL     13
-#define SYS_POWEROFF 14
-#define SYS_REBOOT   15
-#define SYS_GETCWD   16
-#define SYS_LS       17
-#define SYS_OPEN     18
-#define SYS_CLOSE    19
-#define SYS_READ     20
-#define SYS_WRITE    21
-#define SYS_SEEK     22
-#define SYS_TELL     23
-#define SYS_FILESIZE 24
-#define SYS_GFXMODE  25
-#define GFX_WIDTH 800
-#define GFX_HEIGHT 600
-#define GFX_DRAWPIX 102400
+#define SYS_GFX_INIT     7
+#define SYS_GFX_CLEAR    8
+#define SYS_GFX_PIXEL    9
 
 // Objets kernel (définis dans kernel64.cpp)
 extern Terminal* term;
 extern HeapAllocator* heap;
 extern Keyboard* kbd;
+extern VGAGraphics* vga;
 extern bool power;
-extern VGAGraphics* video;
-extern PS2Mouse* mouse;
-extern MemorySystem* mm;
+extern "C" VGAGraphics* ensure_vga();
 
 // Contexte d'un programme en cours d'exécution
 struct ProgramContext {
@@ -109,21 +90,17 @@ extern "C" void interrupt_handler_syscall(
             term->putchar('\n');
             break;
         }
-        case SYS_RUN:
-            // arg1 = path du programme à exécuter
-            // Implémenté dans kernel64.cpp pour éviter les dépendances circulaires
-            handle_syscall(SYS_RUN, arg1);
+
+        case SYS_GFX_INIT:
+            ensure_vga()->init();
             break;
-        case SYS_DIR:
-            // arg1 = chemin du dossier à lister (ou null pour le courant)
-            handle_syscall(arg1 ? SYS_DIR : SYS_LS, SYS_DIR);
+
+        case SYS_GFX_CLEAR:
+            ensure_vga()->clear((unsigned char)arg1);
             break;
-        default:
-            // Syscall inconnu : ignorer ou afficher un message d'erreur
-            term->print("Unknown syscall: ");
-            char num[16];
-            ulltoa(syscall_num, num);
-            term->println(num);
+
+        case SYS_GFX_PIXEL:
+            ensure_vga()->set_pixel((int)arg1, (int)arg2, (unsigned char)arg3);
             break;
 
     }
