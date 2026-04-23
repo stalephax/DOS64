@@ -74,6 +74,7 @@ extern "C" void interrupt_handler_syscall(
             current_program.exit_code = (int)arg1;
             break;
 
+
         case SYS_GETCHAR: {
             char c = kbd->getchar();
             asm volatile("mov %0, %%rax" :: "r"((unsigned long long)c) : "rax");
@@ -153,7 +154,7 @@ extern "C" void interrupt_handler_syscall(
     }
 }
 
-// Handler principal — exceptions CPU
+
 extern "C" void interrupt_handler(unsigned long long int_num,
                                    unsigned long long error_code) {
     switch (int_num) {

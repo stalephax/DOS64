@@ -41,6 +41,58 @@ struct ELF64_ProgramHeader {
 // Types ELF
 static const unsigned int PT_LOAD = 1;
 
+static void restore_text_mode() {
+    // Réécrire les registres VGA pour le mode texte 80x25
+    // Port 0x3C2 — Misc Output Register
+    outb(0x3C2, 0x67);
+
+    // Sequencer
+    outb(0x3C4, 0x00); outb(0x3C5, 0x03);
+    outb(0x3C4, 0x01); outb(0x3C5, 0x00);
+    outb(0x3C4, 0x02); outb(0x3C5, 0x03);
+    outb(0x3C4, 0x03); outb(0x3C5, 0x00);
+    outb(0x3C4, 0x04); outb(0x3C5, 0x02);
+
+    // Déverrouiller CRTC
+    outb(0x3D4, 0x11); outb(0x3D5, inb(0x3D5) & ~0x80);
+
+    // CRTC registres mode texte 80x25
+    static const unsigned char crtc[] = {
+        0x5F,0x4F,0x50,0x82,0x55,0x81,0xBF,0x1F,
+        0x00,0x4F,0x0D,0x0E,0x00,0x00,0x00,0x00,
+        0x9C,0x8E,0x8F,0x28,0x1F,0x96,0xB9,0xA3,0xFF
+    };
+    for (int i = 0; i < 25; i++) {
+        outb(0x3D4, i);
+        outb(0x3D5, crtc[i]);
+    }
+
+    // Graphics controller — mode texte
+    static const unsigned char gc[] = {
+        0x00,0x00,0x00,0x00,0x00,0x10,0x0E,0x00,0xFF
+    };
+    for (int i = 0; i < 9; i++) {
+        outb(0x3CE, i);
+        outb(0x3CF, gc[i]);
+    }
+
+    // Attribute controller — mode texte
+    inb(0x3DA);
+    static const unsigned char ac[] = {
+        0x00,0x01,0x02,0x03,0x04,0x05,0x14,0x07,
+        0x38,0x39,0x3A,0x3B,0x3C,0x3D,0x3E,0x3F,
+        0x0C,0x00,0x0F,0x08,0x00
+    };
+    for (int i = 0; i < 21; i++) {
+        outb(0x3C0, i);
+        outb(0x3C0, ac[i]);
+    }
+    outb(0x3C0, 0x20);
+
+    // Réinitialiser le terminal
+    if (term) term->clear();
+}
+
 class ELF64Loader {
     HeapAllocator* heap;
 
@@ -95,6 +147,7 @@ public:
         current_program.exit_code = 0;
 
         int ret = entry();  // ← le programme s'exécute ici
+        restore_text_mode(); // Revenir en mode texte après l'exécution
 
         return ret;
     }

@@ -88,6 +88,11 @@ extern "C" VGAGraphics* ensure_vga() {
     return vga;
 }
 
+extern "C" VGAGraphics* ensure_vga() {
+    if (!vga) vga = new (vga_buf) VGAGraphics;
+    return vga;
+}
+
 // Palette de couleurs VGA 4 bit
 
 static const unsigned char BLACK = 0x0;

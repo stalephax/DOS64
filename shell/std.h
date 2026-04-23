@@ -6,7 +6,30 @@
 #define SYS_EXIT    4
 #define SYS_GETCHAR 5
 #define SYS_GETLINE 6
-
+#define SYS_RUN     7
+#define SYS_DIR     8
+#define SYS_CD      9
+#define SYS_TYPE    10
+#define SYS_MKDIR   11
+#define SYS_RENAME  12
+#define SYS_DEL     13
+#define SYS_POWEROFF 14
+#define SYS_REBOOT   15
+#define SYS_GETCWD   16
+#define SYS_LS       17
+#define SYS_OPEN     18
+#define SYS_CLOSE    19
+#define SYS_READ     20
+#define SYS_WRITE    21
+#define SYS_SEEK     22
+#define SYS_TELL     23
+#define SYS_FILESIZE 24
+#define SYS_GFXMODE  25
+#define GFX_WIDTH 800
+#define GFX_HEIGHT 600
+#define SYS_GFX_INIT 7
+#define SYS_GFX_CLEAR 8
+#define SYS_GFX_PIXEL 9
 
 static void write(const char* s) {
     asm volatile(
@@ -17,6 +40,50 @@ static void write(const char* s) {
     );
 }
 
+static inline void sys_gfx_exit() {
+    asm volatile("mov $10, %%rax\nint $0x80\n" ::: "rax");
+}
+
+static inline char sys_getchar() {
+    unsigned long long out;
+    asm volatile(
+        "mov $5, %%rax\n"
+        "int $0x80\n"
+        "mov %%rax, %0\n"
+        : "=r"(out)
+        :
+        : "rax"
+    );
+    return (char)out;
+}
+
+static inline void sys_gfx_init() {
+    asm volatile("mov $7, %%rax\nint $0x80\n" ::: "rax");
+}
+
+static inline void sys_gfx_clear(unsigned char color) {
+    asm volatile(
+        "mov $8, %%rax\n"
+        "mov %0, %%rdi\n"
+        "int $0x80\n"
+        :: "r"((unsigned long long)color) : "rax", "rdi"
+    );
+}
+
+static inline void sys_gfx_pixel(int x, int y, unsigned char color) {
+    asm volatile(
+        "mov $9, %%rax\n"
+        "mov %0, %%rdi\n"
+        "mov %1, %%rsi\n"
+        "mov %2, %%rdx\n"
+        "int $0x80\n"
+        ::
+          "r"((unsigned long long)x),
+          "r"((unsigned long long)y),
+          "r"((unsigned long long)color)
+        : "rax", "rdi", "rsi", "rdx"
+    );
+}
 
 
 static void writeLn(const char* s) {
