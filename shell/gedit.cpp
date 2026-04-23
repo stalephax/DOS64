@@ -115,7 +115,7 @@ extern "C" int main() {
             if (cx < 51) cx++;
         }
     }
-
+    //sys_gfx_exit();
     suicide(0); //
     return 0;
 }

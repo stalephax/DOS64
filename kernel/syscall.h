@@ -17,6 +17,7 @@
 #define SYS_GFX_INIT     7
 #define SYS_GFX_CLEAR    8
 #define SYS_GFX_PIXEL    9
+#define SYS_GFX_EXIT 10
 
 // Objets kernel (définis dans kernel64.cpp)
 extern Terminal* term;
@@ -69,6 +70,7 @@ extern "C" void interrupt_handler_syscall(
             current_program.exit_code = (int)arg1;
             break;
 
+
         case SYS_GETCHAR: {
             char c = kbd->getchar();
             asm volatile("mov %0, %%rax" :: "r"((unsigned long long)c) : "rax");
@@ -102,11 +104,22 @@ extern "C" void interrupt_handler_syscall(
         case SYS_GFX_PIXEL:
             ensure_vga()->set_pixel((int)arg1, (int)arg2, (unsigned char)arg3);
             break;
+        case SYS_GFX_EXIT: 
+            // Revenir en mode texte
+            asm volatile(
+                "mov $0x03, %%ax\n"
+                "int $0x10\n"
+                ::: "rax"
+            );
+
+            //if (term) { term->clear(); term->set_color(0x0F); }
+
+            break;
 
     }
 }
 
-// Handler principal — exceptions CPU
+
 extern "C" void interrupt_handler(unsigned long long int_num,
                                    unsigned long long error_code) {
     switch (int_num) {

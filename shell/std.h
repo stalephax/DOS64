@@ -40,6 +40,10 @@ static void write(const char* s) {
     );
 }
 
+static inline void sys_gfx_exit() {
+    asm volatile("mov $10, %%rax\nint $0x80\n" ::: "rax");
+}
+
 static inline char sys_getchar() {
     unsigned long long out;
     asm volatile(
