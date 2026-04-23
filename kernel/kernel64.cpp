@@ -83,6 +83,11 @@ ATADiskIF* ata_if;
 RamDiskIF* ram_if;
 bool power = false; // pour le moment on peut pas éteindre la machine, par manque de prise en charge de l'ACPI, mais ça peut servir pour un reboot ou une mise en veille plus tard
 
+extern "C" VGAGraphics* ensure_vga() {
+    if (!vga) vga = new (vga_buf) VGAGraphics;
+    return vga;
+}
+
 // Palette de couleurs VGA 4 bit
 
 static const unsigned char BLACK = 0x0;

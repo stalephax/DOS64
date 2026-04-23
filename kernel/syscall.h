@@ -4,6 +4,7 @@
 #include "standart.h"
 #include "drivers/io.h"
 #include "drivers/keyboard.h"
+#include "drivers/video.h"
 #include "panic.h"
 // Numéros de syscall
 #define SYS_PRINT   0
@@ -13,12 +14,17 @@
 #define SYS_EXIT    4
 #define SYS_GETCHAR 5
 #define SYS_GETLINE 6
+#define SYS_GFX_INIT     7
+#define SYS_GFX_CLEAR    8
+#define SYS_GFX_PIXEL    9
 
 // Objets kernel (définis dans kernel64.cpp)
 extern Terminal* term;
 extern HeapAllocator* heap;
 extern Keyboard* kbd;
+extern VGAGraphics* vga;
 extern bool power;
+extern "C" VGAGraphics* ensure_vga();
 
 // Contexte d'un programme en cours d'exécution
 struct ProgramContext {
@@ -84,6 +90,19 @@ extern "C" void interrupt_handler_syscall(
             term->putchar('\n');
             break;
         }
+
+        case SYS_GFX_INIT:
+            ensure_vga()->init();
+            break;
+
+        case SYS_GFX_CLEAR:
+            ensure_vga()->clear((unsigned char)arg1);
+            break;
+
+        case SYS_GFX_PIXEL:
+            ensure_vga()->set_pixel((int)arg1, (int)arg2, (unsigned char)arg3);
+            break;
+
     }
 }
 
