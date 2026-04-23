@@ -88,11 +88,6 @@ extern "C" VGAGraphics* ensure_vga() {
     return vga;
 }
 
-extern "C" VGAGraphics* ensure_vga() {
-    if (!vga) vga = new (vga_buf) VGAGraphics;
-    return vga;
-}
-
 // Palette de couleurs VGA 4 bit
 
 static const unsigned char BLACK = 0x0;
@@ -349,11 +344,12 @@ void mount_ata() {
 // Helpers internes
 // ============================================================
 
-// Vérifie si un fichier/dossier existe et retourne ses attributs
-// Retourne -1 si introuvable, sinon les attributs FAT32
-static int fat_get_attr(const char* path) {
-    if (!fs || !fs->is_mounted()) return -1;
-    return fs->get_attributes(path);  // à implémenter dans fat32.h
+// Vérifie si un fichier existe dans le volume courant (A: ou C:)
+static bool fat_file_exists(const char* path) {
+    FAT32* cur = current_fs();
+    if (!cur || !cur->is_mounted()) return false;
+    FAT32_File f = cur->open(path);
+    return f.valid;
 }
 
 // Vérifie que le filesystem est monté, affiche un message sinon
@@ -403,6 +399,7 @@ static void cmd_help() {
     term->println("  TYPE [file]       Display contents of a text file");
     term->println("  MKDIR [name]      Create a new directory");
     term->println("  RUN [file.elf]    Load and execute a 64-bit ELF binary");
+    term->println("  [file(.elf)]      Execute ELF directly by typing its name");
 
     term->set_color(YELLOW);  term->println("");
     term->set_color(YELLOW);  term->println("-- Debug --");
@@ -794,34 +791,45 @@ static void cmd_gfx() {
 
 void interpret_command(const char* cmd) {
 
-    //recherche d'abord un programmes dans le repertoire selectionné, s'il est présent,  on l'exécute et on ignore le reste.
-    // Recherche d'un exécutable dans le répertoire courant
-    // Essaie d'abord le nom exact, puis avec .ELF ajouté
+    // Recherche d'abord un programme dans le répertoire courant.
+    // Si trouvé, on l'exécute directement (avec ou sans extension ELF).
     char resolved[256];
-    char cmd_with_ext[260];
+    char token[260];
+    char token_with_ext[260];
+    token[0] = '\0';
+    token_with_ext[0] = '\0';
 
-    // Essai 1 : nom exact (hello.elf tapé en entier)
-    pm->resolve(cmd, resolved);
-    bool found = (fat_get_attr(resolved) >= 0);
-
-    // Essai 2 : ajouter .ELF automatiquement (hello → hello.elf)
-    if (!found) {
-        // Construire "cmd.ELF"
-        int i = 0;
-        for (; cmd[i]; i++) cmd_with_ext[i] = cmd[i];
-        cmd_with_ext[i++] = '.';
-        cmd_with_ext[i++] = 'E';
-        cmd_with_ext[i++] = 'L';
-        cmd_with_ext[i++] = 'F';
-        cmd_with_ext[i]   = '\0';
-
-        pm->resolve(cmd_with_ext, resolved);
-        found = (fat_get_attr(resolved) >= 0);
+    // On ne tente l'auto-exécution que sur un nom simple (sans arguments).
+    int t = 0;
+    while (cmd[t] && cmd[t] != ' ' && t < 259) {
+        token[t] = cmd[t];
+        t++;
     }
+    token[t] = '\0';
 
-    if (found) { // execution du programme trouvé, avec ou sans extension .ELF
-        cmd_run(cmd_with_ext[0] ? cmd_with_ext : cmd);
-        return;
+    if (token[0] && cmd[t] == '\0') {
+        // Essai 1 : nom exact (ex: hello.elf)
+        pm->resolve(token, resolved);
+        bool found = fat_file_exists(resolved);
+
+        // Essai 2 : ajouter .ELF automatiquement (ex: hello -> hello.ELF)
+        if (!found) {
+            int i = 0;
+            for (; token[i] && i < 255; i++) token_with_ext[i] = token[i];
+            token_with_ext[i++] = '.';
+            token_with_ext[i++] = 'E';
+            token_with_ext[i++] = 'L';
+            token_with_ext[i++] = 'F';
+            token_with_ext[i] = '\0';
+
+            pm->resolve(token_with_ext, resolved);
+            found = fat_file_exists(resolved);
+        }
+
+        if (found) {
+            cmd_run(token_with_ext[0] ? token_with_ext : token);
+            return;
+        }
     }
 
     // --- Système ---
