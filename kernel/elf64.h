@@ -18,7 +18,7 @@ struct ELF64_Header {
     unsigned long long entry;    // point d'entrée
     unsigned long long phoff;    // offset de la program header table
     unsigned long long shoff;    // offset de la section header table
-    unsigned int   flags;
+    unsigned int   flags;        // 0 pour x86_64, serviront a plus pour ajouter des FLAGS de compatibilité avec Linux, Windows moderne etc.
     unsigned short ehsize;
     unsigned short phentsize;    // taille d'une program header entry
     unsigned short phnum;        // nombre de program headers
