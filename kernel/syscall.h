@@ -109,6 +109,23 @@ extern "C" void interrupt_handler_syscall(
             term->putchar('\n');
             break;
         }
+        case SYS_RUN:
+            // arg1 = path du programme à exécuter
+            // Implémenté dans kernel64.cpp pour éviter les dépendances circulaires
+            handle_syscall(SYS_RUN, arg1);
+            break;
+        case SYS_DIR:
+            // arg1 = chemin du dossier à lister (ou null pour le courant)
+            handle_syscall(arg1 ? SYS_DIR : SYS_LS, SYS_DIR);
+            break;
+        default:
+            // Syscall inconnu : ignorer ou afficher un message d'erreur
+            term->print("Unknown syscall: ");
+            char num[16];
+            ulltoa(syscall_num, num);
+            term->println(num);
+            break;
+
     }
 }
 
