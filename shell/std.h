@@ -27,8 +27,9 @@
 #define SYS_GFXMODE  25
 #define GFX_WIDTH 800
 #define GFX_HEIGHT 600
-#define GFX_DRAWPIX 102400
-
+#define SYS_GFX_INIT 7
+#define SYS_GFX_CLEAR 8
+#define SYS_GFX_PIXEL 9
 
 static void write(const char* s) {
     asm volatile(
@@ -39,6 +40,46 @@ static void write(const char* s) {
     );
 }
 
+static inline char sys_getchar() {
+    unsigned long long out;
+    asm volatile(
+        "mov $5, %%rax\n"
+        "int $0x80\n"
+        "mov %%rax, %0\n"
+        : "=r"(out)
+        :
+        : "rax"
+    );
+    return (char)out;
+}
+
+static inline void sys_gfx_init() {
+    asm volatile("mov $7, %%rax\nint $0x80\n" ::: "rax");
+}
+
+static inline void sys_gfx_clear(unsigned char color) {
+    asm volatile(
+        "mov $8, %%rax\n"
+        "mov %0, %%rdi\n"
+        "int $0x80\n"
+        :: "r"((unsigned long long)color) : "rax", "rdi"
+    );
+}
+
+static inline void sys_gfx_pixel(int x, int y, unsigned char color) {
+    asm volatile(
+        "mov $9, %%rax\n"
+        "mov %0, %%rdi\n"
+        "mov %1, %%rsi\n"
+        "mov %2, %%rdx\n"
+        "int $0x80\n"
+        ::
+          "r"((unsigned long long)x),
+          "r"((unsigned long long)y),
+          "r"((unsigned long long)color)
+        : "rax", "rdi", "rsi", "rdx"
+    );
+}
 
 
 static void writeLn(const char* s) {

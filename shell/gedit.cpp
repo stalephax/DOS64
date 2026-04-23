@@ -1,61 +1,9 @@
 // DOS64 - GFX editor ELF userland demo
 // ESC: quit | ENTER: new line | BACKSPACE: erase
+#include "std.h"
 
-#define SYS_GETCHAR 5
-#define SYS_GFX_INIT 7
-#define SYS_GFX_CLEAR 8
-#define SYS_GFX_PIXEL 9
-#define SYS_EXIT 4
 
-static inline void sys_exit(int code) {
-    asm volatile(
-        "mov $4, %%rax\n"
-        "mov %0, %%rdi\n"
-        "int $0x80\n"
-        :: "r"((long long)code) : "rax", "rdi"
-    );
-}
 
-static inline char sys_getchar() {
-    unsigned long long out;
-    asm volatile(
-        "mov $5, %%rax\n"
-        "int $0x80\n"
-        "mov %%rax, %0\n"
-        : "=r"(out)
-        :
-        : "rax"
-    );
-    return (char)out;
-}
-
-static inline void sys_gfx_init() {
-    asm volatile("mov $7, %%rax\nint $0x80\n" ::: "rax");
-}
-
-static inline void sys_gfx_clear(unsigned char color) {
-    asm volatile(
-        "mov $8, %%rax\n"
-        "mov %0, %%rdi\n"
-        "int $0x80\n"
-        :: "r"((unsigned long long)color) : "rax", "rdi"
-    );
-}
-
-static inline void sys_gfx_pixel(int x, int y, unsigned char color) {
-    asm volatile(
-        "mov $9, %%rax\n"
-        "mov %0, %%rdi\n"
-        "mov %1, %%rsi\n"
-        "mov %2, %%rdx\n"
-        "int $0x80\n"
-        ::
-          "r"((unsigned long long)x),
-          "r"((unsigned long long)y),
-          "r"((unsigned long long)color)
-        : "rax", "rdi", "rsi", "rdx"
-    );
-}
 
 static void draw_rect(int x, int y, int w, int h, unsigned char c) {
     for (int yy = y; yy < y + h; yy++)
@@ -168,6 +116,6 @@ extern "C" int main() {
         }
     }
 
-    sys_exit(0);
+    suicide(0); //
     return 0;
 }
