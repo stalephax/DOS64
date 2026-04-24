@@ -371,6 +371,76 @@ static bool require_arg(const char* cmd, int min_len) {
     return true;
 }
 
+static bool has_extension(const char* path) {
+    int dot = -1;
+    for (int i = 0; path[i]; i++) {
+        if (path[i] == '/' || path[i] == '\\') dot = -1;
+        else if (path[i] == '.') dot = i;
+    }
+    return dot >= 0;
+}
+
+static bool append_ext(const char* base, const char* ext, char* out, int out_cap) {
+    int i = 0;
+    for (; base[i] && i < out_cap - 1; i++) out[i] = base[i];
+    if (base[i] != '\0') return false;
+    int j = 0;
+    while (ext[j] && i < out_cap - 1) out[i++] = ext[j++];
+    if (ext[j] != '\0') return false;
+    out[i] = '\0';
+    return true;
+}
+
+static bool resolve_runnable_path(const char* in_path, bool prefer_sys, char* out_path, int out_cap) {
+    char resolved[256];
+    FAT32* cur = current_fs();
+    if (!cur) return false;
+
+    // 1) Chemin fourni tel quel
+    pm->resolve(in_path, resolved);
+    FAT32_File f = cur->open(resolved);
+    if (f.valid) {
+        int i = 0;
+        for (; in_path[i] && i < out_cap - 1; i++) out_path[i] = in_path[i];
+        out_path[i] = '\0';
+        return in_path[i] == '\0';
+    }
+
+    if (has_extension(in_path)) return false;
+
+    // 2) Extension préférée
+    if (append_ext(in_path, prefer_sys ? ".SYS" : ".ELF", out_path, out_cap)) {
+        pm->resolve(out_path, resolved);
+        f = cur->open(resolved);
+        if (f.valid) return true;
+    }
+
+    // 3) Fallback inverse
+    if (append_ext(in_path, prefer_sys ? ".ELF" : ".SYS", out_path, out_cap)) {
+        pm->resolve(out_path, resolved);
+        f = cur->open(resolved);
+        if (f.valid) return true;
+    }
+    return false;
+}
+
+static int run_resolved_path(const char* path) {
+    char resolved[256];
+    pm->resolve(path, resolved);
+
+    FAT32* cur = current_fs();
+    FAT32_File f = cur->open(resolved);
+    if (!f.valid) return -100;
+
+    unsigned char* buf = (unsigned char*)heap->malloc(f.file_size);
+    if (!buf) return -101;
+
+    cur->read_file(&f, buf, f.file_size);
+    int code = elf_64->load_and_run(buf, f.file_size);
+    heap->free(buf);
+    return code;
+}
+
 // ============================================================
 // Commandes — Système
 // ============================================================
@@ -399,8 +469,9 @@ static void cmd_help() {
     term->println("  CD [path]         Change current directory (CD .. to go up)");
     term->println("  TYPE [file]       Display contents of a text file");
     term->println("  MKDIR [name]      Create a new directory");
-    term->println("  RUN [file.elf]    Load and execute a 64-bit ELF binary");
-    term->println("  [file(.elf)]      Execute ELF directly by typing its name");
+    term->println("  RUN [file]        Load and execute .ELF/.SYS as ELF64");
+    term->println("  DRVLOAD [file]    Load a driver (.SYS/.ELF) as ELF64 now");
+    term->println("  [file(.elf/.sys)] Execute program directly by typing its name");
 
     term->set_color(YELLOW);  term->println("");
     term->set_color(YELLOW);  term->println("-- Debug --");
@@ -689,44 +760,18 @@ static void cmd_run(const char* path) {
     if (!require_fs()) return;
     if (!require_arg(path, 0)) return;
 
-    // Compléter avec .ELF si pas d'extension
-    char full_path[260];
-    int len = strlen(path);
-    bool has_ext = (len > 4 && path[len-4] == '.');
-
-    if (!has_ext) {
-        int i = 0;
-        for (; path[i]; i++) full_path[i] = path[i];
-        full_path[i++] = '.';
-        full_path[i++] = 'E';
-        full_path[i++] = 'L';
-        full_path[i++] = 'F';
-        full_path[i]   = '\0';
-        path = full_path;
-    }
-
-    char resolved[256];
-    pm->resolve(path, resolved);
-
-    FAT32* cur = current_fs();
-    FAT32_File f = cur->open(resolved);
-    if (!f.valid) {
+    char runnable[260];
+    if (!resolve_runnable_path(path, false, runnable, sizeof(runnable))) {
         term->print("File not found: ");
         term->println(path);
         return;
     }
 
-    unsigned char* buf = (unsigned char*)heap->malloc(f.file_size);
-    if (!buf) {
-        term->println("Not enough memory to load program.");
-        return;
-    }
-
-    cur->read_file(&f, buf, f.file_size);
-    int code = elf_64->load_and_run(buf, f.file_size);
-    heap->free(buf);
+    int code = run_resolved_path(runnable);
 
     switch (code) {
+        case -100: term->println("Error: file disappeared before execution."); break;
+        case -101: term->println("Not enough memory to load program."); break;
         case -1: term->println("Error: not a valid ELF file."); break;
         case -2: term->println("Error: not an executable ELF."); break;
         case -3: term->println("Error: not x86_64 architecture."); break;
@@ -736,6 +781,39 @@ static void cmd_run(const char* path) {
             term->print("Process exited with code: ");
             term->println(ret);
         }
+    }
+}
+
+static void cmd_drvload(const char* path) {
+    if (!require_fs()) return;
+    if (!require_arg(path, 0)) return;
+
+    char runnable[260];
+    if (!resolve_runnable_path(path, true, runnable, sizeof(runnable))) {
+        term->print("Driver not found: ");
+        term->println(path);
+        return;
+    }
+
+    term->print("Loading driver: ");
+    term->println(runnable);
+    int code = run_resolved_path(runnable);
+
+    if (code >= 0) {
+        char ret[16];
+        ulltoa((unsigned long long)code, ret);
+        term->print("Driver started, exit code: ");
+        term->println(ret);
+        return;
+    }
+
+    switch (code) {
+        case -100: term->println("Error: driver file disappeared before execution."); break;
+        case -101: term->println("Not enough memory to load driver."); break;
+        case -1: term->println("Error: not a valid ELF file."); break;
+        case -2: term->println("Error: not an executable ELF."); break;
+        case -3: term->println("Error: not x86_64 architecture."); break;
+        default: term->println("Driver start failed."); break;
     }
 }
 
@@ -793,7 +871,7 @@ static void cmd_gfx() {
 void interpret_command(const char* cmd) {
 
     // Recherche d'abord un programme dans le répertoire courant.
-    // Si trouvé, on l'exécute directement (avec ou sans extension ELF).
+    // Si trouvé, on l'exécute directement (avec ou sans extension ELF/SYS).
     char resolved[256];
     char token[260];
     char token_with_ext[260];
@@ -826,6 +904,19 @@ void interpret_command(const char* cmd) {
             pm->resolve(token_with_ext, resolved);
             found = fat_file_exists(resolved);
         }
+        // Essai 3 : ajouter .SYS automatiquement (ex: driver -> driver.SYS)
+        if (!found) {
+            int i = 0;
+            for (; token[i] && i < 255; i++) token_with_ext[i] = token[i];
+            token_with_ext[i++] = '.';
+            token_with_ext[i++] = 'S';
+            token_with_ext[i++] = 'Y';
+            token_with_ext[i++] = 'S';
+            token_with_ext[i] = '\0';
+
+            pm->resolve(token_with_ext, resolved);
+            found = fat_file_exists(resolved);
+        }
 
         if (found) {
             cmd_run(token_with_ext[0] ? token_with_ext : token);
@@ -852,6 +943,7 @@ void interpret_command(const char* cmd) {
     else if (strncmp(cmd, "type ", 5) == 0)         cmd_type(cmd + 5);
     else if (strncmp(cmd, "mkdir ", 6) == 0)        cmd_mkdir(cmd + 6);
     else if (strncmp(cmd, "run ", 4) == 0)          cmd_run(cmd + 4);
+    else if (strncmp(cmd, "drvload ", 8) == 0)      cmd_drvload(cmd + 8);
     // Dans le dispatch :
     else if (strncmp(cmd, "rename ", 7) == 0)   cmd_rename(cmd + 7);
     else if (strncmp(cmd, "del ", 4) == 0)      cmd_del(cmd + 4);
