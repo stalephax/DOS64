@@ -83,6 +83,15 @@ ATADiskIF* ata_if;
 RamDiskIF* ram_if;
 bool power = false; // pour le moment on peut pas éteindre la machine, par manque de prise en charge de l'ACPI, mais ça peut servir pour un reboot ou une mise en veille plus tard
 
+struct LoadedDriverInfo {
+    char name[64];
+    int last_exit_code;
+    bool used;
+};
+
+static LoadedDriverInfo g_loaded_drivers[16];
+static int g_loaded_driver_count = 0;
+
 // SVP ne pas enlever cette méthode ou je vous tue.
 extern "C" VGAGraphics* ensure_vga() {
     if (!vga) vga = new (vga_buf) VGAGraphics;
@@ -441,6 +450,30 @@ static int run_resolved_path(const char* path) {
     return code;
 }
 
+static void register_loaded_driver(const char* path, int exit_code) {
+    if (!path || !path[0]) return;
+
+    for (int i = 0; i < 16; i++) {
+        if (!g_loaded_drivers[i].used) continue;
+        if (strcmp(g_loaded_drivers[i].name, path) == 0) {
+            g_loaded_drivers[i].last_exit_code = exit_code;
+            return;
+        }
+    }
+
+    for (int i = 0; i < 16; i++) {
+        if (g_loaded_drivers[i].used) continue;
+
+        int j = 0;
+        for (; path[j] && j < 63; j++) g_loaded_drivers[i].name[j] = path[j];
+        g_loaded_drivers[i].name[j] = '\0';
+        g_loaded_drivers[i].last_exit_code = exit_code;
+        g_loaded_drivers[i].used = true;
+        g_loaded_driver_count++;
+        return;
+    }
+}
+
 // ============================================================
 // Commandes — Système
 // ============================================================
@@ -470,7 +503,8 @@ static void cmd_help() {
     term->println("  TYPE [file]       Display contents of a text file");
     term->println("  MKDIR [name]      Create a new directory");
     term->println("  RUN [file]        Load and execute .ELF/.SYS as ELF64");
-    term->println("  DRVLOAD [file]    Load a driver (.SYS/.ELF) as ELF64 now");
+    term->println("  DVCMGR            List loaded drivers");
+    term->println("  DVCMGR i [file]   Load a driver (.SYS/.ELF) now");
     term->println("  [file(.elf/.sys)] Execute program directly by typing its name");
 
     term->set_color(YELLOW);  term->println("");
@@ -784,10 +818,41 @@ static void cmd_run(const char* path) {
     }
 }
 
-static void cmd_drvload(const char* path) {
-    if (!require_fs()) return;
-    if (!require_arg(path, 0)) return;
+static void cmd_dvcmgr(const char* args) {
+    if (!args || !args[0]) {
+        term->set_color(LIGHT_CYAN);
+        term->println("=== Device Manager ===");
+        term->set_color(WHITE);
 
+        if (g_loaded_driver_count == 0) {
+            term->println("No drivers loaded.");
+            return;
+        }
+
+        for (int i = 0; i < 16; i++) {
+            if (!g_loaded_drivers[i].used) continue;
+            term->print("  ");
+            term->print(g_loaded_drivers[i].name);
+            term->print("  (exit=");
+            char code_buf[16];
+            ulltoa((unsigned long long)g_loaded_drivers[i].last_exit_code, code_buf);
+            term->print(code_buf);
+            term->println(")");
+        }
+        return;
+    }
+
+    // DVCMGR i <pilote>
+    if (!(args[0] == 'i' || args[0] == 'I') || args[1] != ' ' || !args[2]) {
+        term->println("Usage:");
+        term->println("  DVCMGR");
+        term->println("  DVCMGR i <driver.sys>");
+        return;
+    }
+
+    if (!require_fs()) return;
+
+    const char* path = args + 2;
     char runnable[260];
     if (!resolve_runnable_path(path, true, runnable, sizeof(runnable))) {
         term->print("Driver not found: ");
@@ -800,6 +865,7 @@ static void cmd_drvload(const char* path) {
     int code = run_resolved_path(runnable);
 
     if (code >= 0) {
+        register_loaded_driver(runnable, code);
         char ret[16];
         ulltoa((unsigned long long)code, ret);
         term->print("Driver started, exit code: ");
@@ -943,7 +1009,8 @@ void interpret_command(const char* cmd) {
     else if (strncmp(cmd, "type ", 5) == 0)         cmd_type(cmd + 5);
     else if (strncmp(cmd, "mkdir ", 6) == 0)        cmd_mkdir(cmd + 6);
     else if (strncmp(cmd, "run ", 4) == 0)          cmd_run(cmd + 4);
-    else if (strncmp(cmd, "drvload ", 8) == 0)      cmd_drvload(cmd + 8);
+    else if (strcmp(cmd, "dvcmgr") == 0)            cmd_dvcmgr(nullptr);
+    else if (strncmp(cmd, "dvcmgr ", 7) == 0)       cmd_dvcmgr(cmd + 7);
     // Dans le dispatch :
     else if (strncmp(cmd, "rename ", 7) == 0)   cmd_rename(cmd + 7);
     else if (strncmp(cmd, "del ", 4) == 0)      cmd_del(cmd + 4);
