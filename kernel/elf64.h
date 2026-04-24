@@ -3,7 +3,7 @@
 #include "standart.h"
 #include "syscall.h"
 // =============================================
-// Structures ELF64
+// Exécutif ELF64
 // =============================================
 struct ELF64_Header {
     unsigned char  magic[4];     // 0x7F 'E' 'L' 'F'
