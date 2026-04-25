@@ -1,7 +1,7 @@
 #pragma once
 
 // Fonctions de manipulation de mémoire
-// définies dans standart.cpp pour éviter les dépendances circulaires avec memory.cpp
+// définies dans standart.cpp pour éviter les dépendances circulaires avec memory.h
 extern "C" void* memset(void* ptr, int value, unsigned long long size);
 extern "C" void* memcpy(void* dst, const void* src, unsigned long long size);
 

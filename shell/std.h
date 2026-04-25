@@ -1,4 +1,6 @@
 // Programme test — syscalls DOS64
+#include "../kernel/standart.h"
+#include "../kernel/memory.h"
 #define SYS_PRINT   0
 #define SYS_PRINTLN 1
 #define SYS_MALLOC  2

@@ -1,6 +1,6 @@
 #include "../../kernel/apicore/kapi.h"
 
-// le système explose à chaque fois que je tente l'init du driver j'en ai marre.
+
 
 struct SB16State {
     bool          present;

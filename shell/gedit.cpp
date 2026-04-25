@@ -2,7 +2,21 @@
 // ESC: quit | ENTER: new line | BACKSPACE: erase
 #include "std.h"
 
+// QWERTY majuscules (Shift)
+static const char KEY_UPPER[128] = { 
+    0,   27,  '!', '@', '#', '$', '%', '^', '&', '*', '(', ')', '_', '+',
+    '\b','\t','Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P', '{', '}',
+    '\n', 0,  'A', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L', ':', '"', '~',
+    0,   '|', 'Z', 'X', 'C', 'V', 'B', 'N', 'M', '<', '>', '?', 0,   '*',
+    0,   ' ',  0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
+    0,   0,    0,   0,   0,   0,  '-',  0,   0,   0,  '+',  0,   0,   0,
+    0,   0,    0,   0,   0,   0,   0,   0,   0,   0,   0,   0
+};
 
+const char* translate_scancode(unsigned char scancode) {
+      // XOR : shift OU capslock mais pas les deux
+    return KEY_UPPER + scancode;
+}
 extern "C" int main() {
     static char text[20][52];
     static char file_buf[20 * 53];
@@ -29,7 +43,7 @@ extern "C" int main() {
 
         draw_rect(3 + cx * 6, 15 + cy * 8, 7, 9, 14); // cursor
 
-        char c = sys_getchar();
+        char c = *translate_scancode(sys_getchar());
         if (!c) continue;
         if (c == 27) break; // ESC
         if (c == 19) { // Ctrl+S

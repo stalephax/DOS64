@@ -1256,7 +1256,7 @@ extern "C" void kernel_main(unsigned long long mb_addr) {
                 input_len--;
                 term->putchar('\b');
             }
-            term->update_cursor();
+            //term->update_cursor();
 
         } else {
             // Caractère normal : ajouter au buffer si pas plein
@@ -1264,7 +1264,7 @@ extern "C" void kernel_main(unsigned long long mb_addr) {
                 input[input_len++] = c;
                 term->putchar(c);
             }
-            term->update_cursor();
+            //term->update_cursor();
         }
     }
 }
