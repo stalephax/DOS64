@@ -5,27 +5,7 @@
 // Tables de scancodes — 4 layouts
 // ============================================================
 
-// QWERTY minuscules
-static const char QWERTY_LOWER[128] = {
-    0,   27,  '1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '-', '=',
-    '\b','\t','q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p', '[', ']',
-    '\n', 0,  'a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l', ';','\'', '`',
-    0,  '\\', 'z', 'x', 'c', 'v', 'b', 'n', 'm', ',', '.', '/', 0,   '*',
-    0,   ' ',  0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
-    0,   0,    0,   0,   0,   0,  '-',  0,   0,   0,  '+',  0,   0,   0,
-    0,   0,    0,   0,   0,   0,   0,   0,   0,   0,   0,   0
-};
 
-// QWERTY majuscules (Shift)
-static const char QWERTY_UPPER[128] = {
-    0,   27,  '!', '@', '#', '$', '%', '^', '&', '*', '(', ')', '_', '+',
-    '\b','\t','Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P', '{', '}',
-    '\n', 0,  'A', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L', ':', '"', '~',
-    0,   '|', 'Z', 'X', 'C', 'V', 'B', 'N', 'M', '<', '>', '?', 0,   '*',
-    0,   ' ',  0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
-    0,   0,    0,   0,   0,   0,  '-',  0,   0,   0,  '+',  0,   0,   0,
-    0,   0,    0,   0,   0,   0,   0,   0,   0,   0,   0,   0
-};
 
 // AZERTY minuscules
 static const char AZERTY_LOWER[128] = {
@@ -76,6 +56,7 @@ class Keyboard {
     KeyboardLayout layout = LAYOUT_QWERTY;
 
     // Sélectionner la bonne table selon l'état
+    /* la table sera gérée par le système, pourra être configuré à l'aide d'un fichier
     char translate(unsigned char scancode) {
         bool upper = shift ^ capslock;  // XOR : shift OU capslock mais pas les deux
 
@@ -86,7 +67,7 @@ class Keyboard {
             table = upper ? QWERTY_UPPER : QWERTY_LOWER;
 
         return table[scancode];
-    }
+    }*/
 
     // Gérer les touches modificatrices
     // Retourne true si c'était une touche modificatrice
@@ -129,7 +110,7 @@ public:
             // Ignorer key-release (bit 7)
             if (scancode & 0x80) continue;
 
-            char c = translate(scancode);
+            char c = scancode;
             if (c) return c;
         }
     }
@@ -145,6 +126,6 @@ public:
         if (handle_modifier(scancode)) return 0;
         if (scancode & 0x80) return 0;
 
-        return translate(scancode);
+        return scancode;
     }
 };

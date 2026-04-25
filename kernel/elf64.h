@@ -2,6 +2,7 @@
 #include "memory.h"
 #include "standart.h"
 #include "syscall.h"
+#include "apicore/kapi.h"
 // =============================================
 // Exécutif ELF64
 // =============================================
@@ -151,4 +152,49 @@ public:
 
         return ret;
     }
+
+    // pilotes .SYS
+    int load_and_call_driver(unsigned char* data, unsigned int size, void* kapi) {
+        
+        KernelAPI* api = (KernelAPI*)kapi;
+        char dbg[32];
+        ulltoa((unsigned long long)api->print, dbg);
+        term->print("kapi->print = 0x"); term->println(dbg);
+        ulltoa((unsigned long long)api->outb, dbg);
+        term->print("kapi->outb  = 0x"); term->println(dbg);
+        ulltoa((unsigned long long)api->inb, dbg);
+        term->print("kapi->inb   = 0x"); term->println(dbg);
+
+    if (!is_valid(data)) return -1;
+    
+    ELF64_Header* hdr = (ELF64_Header*)data;
+    if (hdr->type != 2 || hdr->machine != 0x3E) return -2;
+    // zéro sur le BSS
+    for (int i = 0; i < hdr->phnum; i++) {
+    ELF64_ProgramHeader* ph = (ELF64_ProgramHeader*)(
+        data + hdr->phoff + i * hdr->phentsize);
+    if (ph->type != PT_LOAD) continue;
+
+    memcpy((void*)ph->vaddr, data + ph->offset, ph->filesz);
+
+    // Zéroer la BSS — OBLIGATOIRE pour les globales
+    if (ph->memsz > ph->filesz)
+        memset((void*)(ph->vaddr + ph->filesz), 0,
+               ph->memsz - ph->filesz);
+    }
+    // Charger les segments
+    for (int i = 0; i < hdr->phnum; i++) {
+        ELF64_ProgramHeader* ph = (ELF64_ProgramHeader*)(
+            data + hdr->phoff + i * hdr->phentsize);
+        if (ph->type != PT_LOAD) continue;
+        memcpy((void*)ph->vaddr, data + ph->offset, ph->filesz);
+        if (ph->memsz > ph->filesz)
+            memset((void*)(ph->vaddr + ph->filesz), 0, ph->memsz - ph->filesz);
+    }
+
+    // Appeler driver_entry(KernelAPI*)
+    typedef int (*DriverEntry)(void*);
+    DriverEntry entry = (DriverEntry)hdr->entry;
+    return entry(kapi);
+}
 };

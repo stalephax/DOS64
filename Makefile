@@ -7,7 +7,7 @@ LDFLAGS  = -T link.ld -nostdlib -z max-page-size=0x1000
 
 OBJS = boot/booter.o boot/idt.o kernel/kernel64.o kernel/standart.o
 
-all: dos64.iso hello.elf gedit.elf
+all: dos64.iso hello.elf gedit.elf keyboard.sys
 
 boot/idt.o: boot/idt.asm
 	$(ASM) -f elf64 $< -o $@
@@ -35,6 +35,9 @@ hello.elf: shell/hello.o shell/shell.ld
 
 gedit.elf: shell/gedit.o shell/shell.ld
 	ld -m elf_x86_64 -T shell/shell.ld -nostdlib -o $@ shell/gedit.o
+
+keyboard.sys: drv/keyb.o drv/drv.ld
+	ld -m elf_x86_64 -T drv/drv.ld -nostdlib -o $@ drv/keyb.o
 
 clean:
 	rm -f $(OBJS) dos64.bin dos64.iso shell/hello.o shell/gedit.o hello.elf gedit.elf

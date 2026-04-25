@@ -461,6 +461,145 @@ public:
     return true;
 }
 
+// Formater le disque connecté en FAT32
+// label = nom du volume (11 chars max)
+// total_sectors = taille totale du disque en secteurs (0 = auto depuis le disque)
+bool format(const char* label = "DOS64      ", unsigned int total_sectors = 0) {
+    if (!disk || !disk->is_present()) return false;
+
+    unsigned char buf[512];
+    for (int i = 0; i < 512; i++) buf[i] = 0;
+
+    // Détecter la taille si non spécifiée
+    // On essaie de lire un secteur lointain pour estimer
+    // Par défaut on suppose 512 Mo = 1048576 secteurs
+    if (total_sectors == 0) total_sectors = 1048576;
+
+    // ============================
+    // Calcul de la géométrie FAT32
+    // ============================
+    unsigned short bytes_per_sector    = 512;
+    unsigned char  sectors_per_cluster = 8;    // 4 Ko par cluster
+    unsigned short reserved_sectors    = 32;   // standard FAT32
+    unsigned char  fat_count           = 2;
+
+    // Calculer la taille de la FAT
+    // total_clusters = (total_sectors - reserved - fat*2) / sectors_per_cluster
+    // fat_size = ceil(total_clusters * 4 / bytes_per_sector)
+    // On itère une fois pour converger
+    unsigned int fat_size = 0;
+    {
+        unsigned int data_sectors = total_sectors - reserved_sectors;
+        unsigned int clusters     = data_sectors / sectors_per_cluster;
+        fat_size = (clusters * 4 + bytes_per_sector - 1) / bytes_per_sector;
+        // Recalculer avec la FAT incluse
+        data_sectors = total_sectors - reserved_sectors - fat_count * fat_size;
+        clusters     = data_sectors / sectors_per_cluster;
+        fat_size = (clusters * 4 + bytes_per_sector - 1) / bytes_per_sector;
+    }
+
+    unsigned int fat1_start  = reserved_sectors;
+    unsigned int fat2_start  = fat1_start + fat_size;
+    unsigned int data_start  = fat2_start + fat_size;
+    unsigned int root_cluster = 2;
+
+    // ============================
+    // ÉTAPE 1 : Boot Sector (BPB)
+    // ============================
+    FAT32_BPB* bpb = (FAT32_BPB*)buf;
+
+    buf[0] = 0xEB; buf[1] = 0x58; buf[2] = 0x90;  // JMP + NOP
+    buf[3]='D'; buf[4]='O'; buf[5]='S'; buf[6]='6';
+    buf[7]='4'; buf[8]=' '; buf[9]=' '; buf[10]=' ';
+
+    bpb->bytes_per_sector    = bytes_per_sector;
+    bpb->sectors_per_cluster = sectors_per_cluster;
+    bpb->reserved_sectors    = reserved_sectors;
+    bpb->fat_count           = fat_count;
+    bpb->root_entry_count    = 0;
+    bpb->total_sectors_16    = 0;
+    bpb->media_type          = 0xF8;
+    bpb->fat_size_16         = 0;
+    bpb->sectors_per_track   = 63;
+    bpb->head_count          = 255;
+    bpb->hidden_sectors      = 0;
+    bpb->total_sectors_32    = total_sectors;
+    bpb->fat_size_32         = fat_size;
+    bpb->ext_flags           = 0;
+    bpb->fs_version          = 0;
+    bpb->root_cluster        = root_cluster;
+    bpb->fs_info             = 1;
+    bpb->backup_boot         = 6;
+    bpb->drive_number        = 0x80;
+    bpb->boot_signature      = 0x29;
+    bpb->volume_id           = 0xDEADB00F;  // ID arbitraire
+
+    // Label volume — 11 chars padded avec espaces
+    for (int i = 0; i < 11; i++)
+        bpb->volume_label[i] = (label[i] && i < 11) ? label[i] : ' ';
+
+    // FS type string
+    buf[82]='F'; buf[83]='A'; buf[84]='T';
+    buf[85]='3'; buf[86]='2'; buf[87]=' ';
+    buf[88]=' '; buf[89]=' ';
+
+    // Signature boot sector
+    buf[510] = 0x55; buf[511] = 0xAA;
+
+    disk->write(0, 1, buf);
+
+    // Boot sector de backup (secteur 6)
+    disk->write(6, 1, buf);
+
+    // ============================
+    // ÉTAPE 2 : FSInfo (secteur 1)
+    // ============================
+    for (int i = 0; i < 512; i++) buf[i] = 0;
+    // Signature FSInfo
+    buf[0]=0x52; buf[1]=0x52; buf[2]=0x61; buf[3]=0x41;  // "RRaA"
+    buf[484]=0x72; buf[485]=0x72; buf[486]=0x41; buf[487]=0x61; // "rrAa"
+    // Free cluster count = inconnu
+    buf[488]=0xFF; buf[489]=0xFF; buf[490]=0xFF; buf[491]=0xFF;
+    // Next free cluster = 3 (après root)
+    buf[492]=0x03; buf[493]=0x00; buf[494]=0x00; buf[495]=0x00;
+    buf[510]=0x55; buf[511]=0xAA;
+    disk->write(1, 1, buf);
+
+    // ============================
+    // ÉTAPE 3 : Zéroer les FATs
+    // ============================
+    for (int i = 0; i < 512; i++) buf[i] = 0;
+
+    // Zéroer FAT1
+    for (unsigned int s = 0; s < fat_size; s++)
+        disk->write(fat1_start + s, 1, buf);
+
+    // Zéroer FAT2
+    for (unsigned int s = 0; s < fat_size; s++)
+        disk->write(fat2_start + s, 1, buf);
+
+    // Entrées spéciales FAT[0], FAT[1], FAT[2]
+    unsigned int* fat = (unsigned int*)buf;
+    fat[0] = 0x0FFFFFF8;   // media descriptor
+    fat[1] = 0x0FFFFFFF;   // réservé
+    fat[2] = 0x0FFFFFFF;   // root dir = fin de chaîne
+    disk->write(fat1_start, 1, buf);
+    disk->write(fat2_start, 1, buf);
+
+    // ============================
+    // ÉTAPE 4 : Zéroer le cluster racine
+    // ============================
+    for (int i = 0; i < 512; i++) buf[i] = 0;
+    unsigned int root_lba = data_start;  // cluster 2
+    for (int s = 0; s < sectors_per_cluster; s++)
+        disk->write(root_lba + s, 1, buf);
+
+    // ============================
+    // ÉTAPE 5 : Remonter le filesystem
+    // ============================
+    mounted = false;
+    return mount(disk);  // remonter après format
+}
 // ============================================================
 // RENAME — renommer un fichier ou dossier
 // ============================================================

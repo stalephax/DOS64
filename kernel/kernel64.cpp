@@ -17,6 +17,8 @@
 #include "drivers/ata_lf.h"      // 4. adapteur ATA
 #include "drivers/ram_lf.h"      // 5. adapteur RAM
 #include "fs/FAT32.h"       // 6. filesystem (utilise DiskDrive*)
+#include "apicore/kapi.h"   // pour l'interface d'API kernel passée aux drivers
+#include "apicore/devtable.h"
 /*
 * KERNEL DOS64
 *   mis à jour le 22/04/2026
@@ -37,11 +39,10 @@
 
 
 
-
 inline void* operator new(unsigned long, void* p) { return p; }
 // Adresse mémoire du buffer VGA (texte mode)
 static unsigned short* const T_VGA = (unsigned short*)0xB8000;
-
+// périphériques globaux (instanciés dans init() avec placement new)
 static unsigned char term_buf[sizeof(Terminal)];
 static unsigned char kbd_buf[sizeof(Keyboard)];
 static unsigned char mm_buf[sizeof(MemorySystem)];
@@ -82,7 +83,37 @@ FAT32*   ramfs;
 ATADiskIF* ata_if;
 RamDiskIF* ram_if;
 bool power = false; // pour le moment on peut pas éteindre la machine, par manque de prise en charge de l'ACPI, mais ça peut servir pour un reboot ou une mise en veille plus tard
+// périphériques instanciés des pilotes .SYS
+static unsigned char devtable_buf[sizeof(DeviceTable)];
+DeviceTable* devtable;
 
+// Fonctions wrapper pour la KernelAPI
+static void kapi_print(const char* s)               { term->print(s); }
+static void kapi_println(const char* s)             { term->println(s); }
+static void kapi_set_color(unsigned char fg, unsigned char bg) { term->set_color(fg, bg); }
+static void* kapi_malloc(unsigned long long sz)     { return heap->malloc(sz); }
+static void kapi_free(void* p)                      { heap->free(p); }
+static unsigned char kapi_inb(unsigned short p)     { return inb(p); }
+static void kapi_outb(unsigned short p, unsigned char v) { outb(p, v); }
+static unsigned short kapi_inw(unsigned short p)    { return inw(p); }
+static void kapi_outw(unsigned short p, unsigned short v) { outw(p, v); }
+static void kapi_register_device(const char* name, void* ptr, int type) {
+    if (devtable) devtable->register_device(name, ptr, type);
+}
+
+// Instance globale de l'API — partagée avec tous les drivers
+static KernelAPI g_kapi = {
+    kapi_print,
+    kapi_println,
+    kapi_set_color,
+    kapi_malloc,
+    kapi_free,
+    kapi_inb,
+    kapi_outb,
+    kapi_inw,
+    kapi_outw,
+    kapi_register_device
+};
 struct LoadedDriverInfo {
     char name[64];
     int last_exit_code;
@@ -150,6 +181,34 @@ extern unsigned char _kernel_end[];
 static void init_status(const char* msg, int line, bool ok) {
     print(msg, line, t_color(ok ? LIGHT_GREEN : LIGHT_RED));
 }
+// table de traduction pour les touches de claviers configurables : QWERTY par défaut, mais on peut imaginer d'autres dispositions plus tard (AZERTY, QWERTZ, Dvorak, Bépo, etc.) — pour l'instant on s'en sert juste pour afficher les touches appuyées dans les tests de clavier, mais ça peut aussi servir pour une future commande "showkey" ou un mode de saisie de texte dans le shell
+// QWERTY minuscules
+static const char KEY_LOWER[128] = {
+    0,   27,  '1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '-', '=',
+    '\b','\t','q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p', '[', ']',
+    '\n', 0,  'a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l', ';','\'', '`',
+    0,  '\\', 'z', 'x', 'c', 'v', 'b', 'n', 'm', ',', '.', '/', 0,   '*',
+    0,   ' ',  0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
+    0,   0,    0,   0,   0,   0,  '-',  0,   0,   0,  '+',  0,   0,   0,
+    0,   0,    0,   0,   0,   0,   0,   0,   0,   0,   0,   0
+};
+
+// QWERTY majuscules (Shift)
+static const char KEY_UPPER[128] = { 
+    0,   27,  '!', '@', '#', '$', '%', '^', '&', '*', '(', ')', '_', '+',
+    '\b','\t','Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P', '{', '}',
+    '\n', 0,  'A', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L', ':', '"', '~',
+    0,   '|', 'Z', 'X', 'C', 'V', 'B', 'N', 'M', '<', '>', '?', 0,   '*',
+    0,   ' ',  0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
+    0,   0,    0,   0,   0,   0,  '-',  0,   0,   0,  '+',  0,   0,   0,
+    0,   0,    0,   0,   0,   0,   0,   0,   0,   0,   0,   0
+};
+
+const char* translate_scancode(unsigned char scancode) {
+    bool upper = kbd->is_shift() ^ kbd->is_capslock();  // XOR : shift OU capslock mais pas les deux
+    return upper ? KEY_UPPER + scancode : KEY_LOWER + scancode;
+}
+
 
 // Helper : afficher une valeur numérique de debug
 static void init_debug(unsigned long long val, int line, int col) {
@@ -400,6 +459,8 @@ static bool append_ext(const char* base, const char* ext, char* out, int out_cap
     return true;
 }
 
+
+
 static bool resolve_runnable_path(const char* in_path, bool prefer_sys, char* out_path, int out_cap) {
     char resolved[256];
     FAT32* cur = current_fs();
@@ -432,20 +493,49 @@ static bool resolve_runnable_path(const char* in_path, bool prefer_sys, char* ou
     }
     return false;
 }
-
-static int run_resolved_path(const char* path) {
+// la méthode d'avant est éclatée au sous-sol, celle la sera mieux pas de crash
+static int run_resolved_path(const char* path, bool is_driver = false) {
+    if (!path || !path[0]) return -100;
+    
     char resolved[256];
     pm->resolve(path, resolved);
 
     FAT32* cur = current_fs();
+    if (!cur || !cur->is_mounted()) return -102;
+
     FAT32_File f = cur->open(resolved);
     if (!f.valid) return -100;
+    if (f.file_size == 0) return -103;
+
+    // Debug — afficher la taille du fichier
+    char dbg[32];
+    ulltoa(f.file_size, dbg);
+    term->print("File size: "); term->println(dbg);
 
     unsigned char* buf = (unsigned char*)heap->malloc(f.file_size);
     if (!buf) return -101;
 
+    // Debug — afficher l'adresse du buffer
+    ulltoa((unsigned long long)buf, dbg);
+    term->print("Buffer at: 0x"); term->println(dbg);
+
     cur->read_file(&f, buf, f.file_size);
-    int code = elf_64->load_and_run(buf, f.file_size);
+    term->println("File read OK");
+
+    // Debug — vérifier le magic ELF
+    if (buf[0]==0x7F && buf[1]=='E' && buf[2]=='L' && buf[3]=='F')
+        term->println("ELF magic OK");
+    else
+        term->println("NOT an ELF!");
+
+    int code;
+    if (is_driver) {
+        term->println("Calling load_and_call_driver...");
+        code = elf_64->load_and_call_driver(buf, f.file_size, &g_kapi);
+    } else {
+        code = elf_64->load_and_run(buf, f.file_size);
+    }
+
     heap->free(buf);
     return code;
 }
@@ -496,6 +586,7 @@ static void cmd_help() {
     term->set_color(YELLOW);  term->println("");
     term->set_color(YELLOW);  term->println("-- Disk & Filesystem --");
     term->set_color(WHITE);
+    term->println("  FATFS             Format a volume as FAT32 (Trusted Intaller mode required)");
     term->println("  VOLS              List available volumes");
     term->println("  MOUNT             Initialize ATA driver and mount C:");
     term->println("  DIR [path]        List files in current or given directory");
@@ -534,6 +625,96 @@ static void cmd_clear() {
     term->clear();
 }
 
+// commande Formattage fat32, pour les tests de formatage et d'écriture sur disque, même remarque que pour FAT32.h
+static void cmd_fatfs(const char* args) {
+    // Parser : FATFS [C:] [label]
+    // Exemples :
+    //   FATFS           → formate C: avec label "DOS64"
+    //   FATFS C:        → formate C: avec label "DOS64"
+    //   FATFS A:        → formate A: (RAM disk)
+    //   FATFS C: MYVOL  → formate C: avec label "MYVOL"
+
+    char vol   = 'C';
+    const char* label = "DOS64      ";
+    char label_buf[12] = "DOS64      ";
+
+    // Parser le volume
+    if (args && args[0]) {
+        if (args[1] == ':') {
+            vol = args[0];
+            args += 2;
+            while (args[0] == ' ') args++;  // skip espaces
+        }
+        // Parser le label
+        if (args[0]) {
+            int i = 0;
+            for (; args[i] && i < 11; i++) {
+                char c = args[i];
+                if (c >= 'a' && c <= 'z') c -= 32;  // majuscule
+                label_buf[i] = c;
+            }
+            for (; i < 11; i++) label_buf[i] = ' ';
+            label_buf[11] = '\0';
+            label = label_buf;
+        }
+    }
+
+    // Confirmation de sécurité
+    term->set_color(LIGHT_RED);
+    term->print("WARNING: This will ERASE all data on ");
+    term->putchar(vol); term->println(":");
+    term->set_color(WHITE);
+    term->print("Type YES to confirm: ");
+
+    // Lire la confirmation
+    static char confirm[8];
+    int ci = 0;
+    while (ci < 7) {
+        char c = kbd->getchar();
+        if (c == '\n') break;
+        if (c == '\b' && ci > 0) { ci--; term->putchar('\b'); continue; }
+        confirm[ci++] = c;
+        term->putchar(c);
+    }
+    confirm[ci] = '\0';
+    term->putchar('\n');
+
+    if (strcmp(confirm, "YES") != 0) {
+        term->println("Format cancelled.");
+        return;
+    }
+
+    // Choisir le bon disque
+    FAT32* target_fs = nullptr;
+    if (vol == 'C' || vol == 'c') target_fs = fs;
+    if (vol == 'A' || vol == 'a') target_fs = ramfs;
+
+    if (!target_fs) {
+        term->println("Volume not available.");
+        return;
+    }
+
+    term->print("Formatting ");
+    term->putchar(vol); term->print(": as FAT32");
+    if (label_buf[0] != ' ') {
+        term->print(" [");
+        term->print(label_buf);
+        term->print("]");
+    }
+    term->println("...");
+
+    if (target_fs->format(label)) {
+        term->set_color(LIGHT_GREEN);
+        term->print("Format complete. ");
+        term->putchar(vol); term->println(": is ready.");
+        term->set_color(WHITE);
+    } else {
+        term->set_color(LIGHT_RED);
+        term->println("Format failed.");
+        term->print(" Operation failed miserably. ");
+        term->set_color(WHITE);
+    }
+}
 static void cmd_mem() {
     char buf[32];
     term->set_color(LIGHT_CYAN);
@@ -801,7 +982,7 @@ static void cmd_run(const char* path) {
         return;
     }
 
-    int code = run_resolved_path(runnable);
+    int code = run_resolved_path(runnable); // si l'opération échoue, code < 0, sinon c'est le code de retour du programme, et a indique son execution correcte
 
     switch (code) {
         case -100: term->println("Error: file disappeared before execution."); break;
@@ -1000,6 +1181,7 @@ void interpret_command(const char* cmd) {
     else if (strcmp(cmd, "reboot") == 0)            cmd_shutdown('r');
 
     // --- Filesystem ---
+    else if (strncmp(cmd, "fatfs", 5) == 0)         cmd_fatfs(cmd + 5);
     else if (strcmp(cmd, "vols") == 0)              cmd_vols();
     else if (strcmp(cmd, "mount") == 0)             cmd_mount();
     else if (strcmp(cmd, "dir") == 0)               cmd_dir(nullptr);
@@ -1049,7 +1231,7 @@ extern "C" void kernel_main(unsigned long long mb_addr) {
         cursor->update(mouse);
 
         // Lire le clavier (non bloquant)
-        char c = kbd->poll();  // ← utilise poll() au lieu de getchar() !
+        char c = *translate_scancode(kbd->poll());  // ← utilise poll() au lieu de getchar() !
         if (!c) continue;
         
         if (c == '\n') {
