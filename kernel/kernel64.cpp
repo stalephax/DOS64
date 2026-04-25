@@ -181,6 +181,7 @@ extern unsigned char _kernel_end[];
 static void init_status(const char* msg, int line, bool ok) {
     print(msg, line, t_color(ok ? LIGHT_GREEN : LIGHT_RED));
 }
+
 // table de traduction pour les touches de claviers configurables : QWERTY par défaut, mais on peut imaginer d'autres dispositions plus tard (AZERTY, QWERTZ, Dvorak, Bépo, etc.) — pour l'instant on s'en sert juste pour afficher les touches appuyées dans les tests de clavier, mais ça peut aussi servir pour une future commande "showkey" ou un mode de saisie de texte dans le shell
 // QWERTY minuscules
 static const char KEY_LOWER[128] = {

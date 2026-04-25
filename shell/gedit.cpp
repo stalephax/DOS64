@@ -20,7 +20,7 @@ extern "C" int main() {
         sys_gfx_clear(1); // blue
         draw_rect(0, 0, 320, 12, 15); // title bar
         draw_rect(0, 12, 320, 188, 0); // text area
-        draw_text(4, 2, "GEDIT.ELF", 1, 15);
+        draw_text(4, 2, "GFX MODE EDITOR", 1, 15);
         draw_text(80, 2, status, 1, 15);
 
         for (int y = 0; y < 20; y++)

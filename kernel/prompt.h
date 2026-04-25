@@ -71,3 +71,4 @@ public:
         outb(0x3D5, (pos >> 8) & 0xFF);
     }
 };
+

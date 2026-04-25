@@ -1,4 +1,4 @@
-ENTRY(main)
+ENTRY(driver_entry)
 SECTIONS {
     . = 0x500000;       /* adresse standard des pilotes */
     .text   : { *(.text*) }

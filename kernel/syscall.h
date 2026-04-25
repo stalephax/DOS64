@@ -74,9 +74,9 @@ extern "C" void interrupt_handler_syscall(
             current_program.exit_code = (int)arg1;
             break;
 
-
+        // c'est juste un programme DOS, on va donner la possibilité de charger lui-même une table de traduction
         case SYS_GETCHAR: {
-            char c = kbd->getchar();
+            char c =  kbd->getchar();
             asm volatile("mov %0, %%rax" :: "r"((unsigned long long)c) : "rax");
             break;
         }
@@ -86,7 +86,7 @@ extern "C" void interrupt_handler_syscall(
             unsigned long long max = arg2;
             unsigned long long i = 0;
             while (i < max - 1) {
-                char c = kbd->getchar();
+                char c = kbd->getchar(); 
                 if (c == '\n') break;
                 if (c == '\b' && i > 0) { i--; term->putchar('\b'); continue; }
                 buf[i++] = c;
