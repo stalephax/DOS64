@@ -1043,7 +1043,7 @@ static void cmd_dvcmgr(const char* args) {
 
     term->print("Loading driver: ");
     term->println(runnable);
-    int code = run_resolved_path(runnable);
+    int code = run_resolved_path(runnable, true);
 
     if (code >= 0) {
         register_loaded_driver(runnable, code);
