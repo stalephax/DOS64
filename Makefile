@@ -36,8 +36,8 @@ hello.elf: shell/hello.o shell/shell.ld
 gedit.elf: shell/gedit.o shell/shell.ld
 	ld -m elf_x86_64 -T shell/shell.ld -nostdlib -o $@ shell/gedit.o
 
-keyboard.sys: drv/keyb.o drv/drv.ld
-	ld -m elf_x86_64 -T drv/drv.ld -nostdlib -o $@ drv/keyb.o
+keyboard.sys: drv/keyb.o shell/drv/drv.ld
+	ld -m elf_x86_64 -T shell/drv/drv.ld -nostdlib -o $@ shell/drv/keyb.o
 
 clean:
 	rm -f $(OBJS) dos64.bin dos64.iso shell/hello.o shell/gedit.o hello.elf gedit.elf

@@ -20,7 +20,7 @@
 #define SYS_GFX_PIXEL    9
 #define SYS_FS_READ      10
 #define SYS_FS_WRITE     11
-#define SYS_GFX_TEXTMODE 12
+#define SYS_GFX_TEXTMODE 12 // note : when a software using GFX mode goes back to standart SHELL mode, the text UI is completely fucked
 
 // Objets kernel (définis dans kernel64.cpp)
 extern Terminal* term;
@@ -143,6 +143,69 @@ extern "C" void interrupt_handler_syscall(
             asm volatile("mov %0, %%rax" :: "r"((unsigned long long)size) : "rax");
             break;
         }
+        // Dans interrupt_handler_syscall(), ajouter :
+
+case 11:  // SYS_FS_READ — lire un fichier
+{
+    const char* path = (const char*)arg1;
+    char*       buf  = (char*)arg2;
+    unsigned long long max = arg3;
+
+    FAT32* cur = current_fs_for_path(path);
+    if (!cur) { asm volatile("mov $-1, %%rax" ::: "rax"); break; }
+
+    char resolved[256];
+    pm->resolve(path, resolved);
+    FAT32_File f = cur->open(resolved);
+    if (!f.valid) { asm volatile("mov $-1, %%rax" ::: "rax"); break; }
+
+    unsigned int to_read = f.file_size < max ? f.file_size : max;
+    cur->read_file(&f, (unsigned char*)buf, to_read);
+    asm volatile("mov %0, %%rax" :: "r"((long long)to_read) : "rax");
+    break;
+}
+
+case 12:  // SYS_FS_WRITE — écrire un fichier
+{
+    // Pour l'instant : pas d'écriture partielle, on recrée le fichier
+    // (implémentation complète nécessite write FAT32)
+    asm volatile("mov $-1, %%rax" ::: "rax");
+    break;
+}
+
+case 15:  // SYS_FS_EXISTS
+{
+    const char* path = (const char*)arg1;
+    char resolved[256];
+    pm->resolve(path, resolved);
+    FAT32* cur = current_fs();
+    bool exists = cur && (cur->open(resolved).valid || cur->is_directory(resolved));
+    asm volatile("mov %0, %%rax" :: "r"((long long)(exists ? 1 : 0)) : "rax");
+    break;
+}
+
+case 19:  // SYS_GETCWD
+{
+    char* buf = (char*)arg1;
+    int   max = (int)arg2;
+    if (buf && max > 0) {
+        char prompt[64];
+        pm->get_prompt(prompt);
+        int i = 0;
+        for (; prompt[i] && prompt[i] != '>' && i < max-1; i++)
+            buf[i] = prompt[i];
+        buf[i] = '\0';
+    }
+    break;
+}
+
+case 20:  // SYS_SETCWD
+{
+    const char* path = (const char*)arg1;
+    long long result = pm->cd(path) ? 0 : -1;
+    asm volatile("mov %0, %%rax" :: "r"(result) : "rax");
+    break;
+}
 
         case SYS_GFX_TEXTMODE:
             ensure_vga()->text_mode();

@@ -31,6 +31,8 @@ static unsigned long long read_rip() { unsigned long long v; asm volatile("lea (
 
 __attribute__((noreturn))
 static void kernel_panic(const char* reason, unsigned long long code = 0) {
+    Beeper* beep; // indiquateur sonore
+    
     asm volatile(
         "mov $0x00110000, %%rsp\n"  // adresse fixe sous le kernel
         ::: "memory"
@@ -59,7 +61,7 @@ static void kernel_panic(const char* reason, unsigned long long code = 0) {
     panic_print("RIP:", 10); panic_printhex(read_rip(), 10, 5); // instruction pointer
 
     panic_print("--- SYSTEM HALTED --- Please reboot with that power button", 12);
-
+    beep->beep(code, 4017717247);
     // Halt
     asm volatile("cli; hlt");
     while(true) {}

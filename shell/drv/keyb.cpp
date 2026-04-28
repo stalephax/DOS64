@@ -2,53 +2,15 @@
 // Tables de scancodes — 4 layouts
 // ============================================================
 // sera compilable en un driver SYS, mais pour l'instant c'est plus simple de le garder dans le kernel
-
+#include "../../kernel/apicore/kapi.h"
 #include "io.h"
-
-// QWERTY minuscules
-static const char QWERTY_LOWER[128] = {
-    0,   27,  '1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '-', '=',
-    '\b','\t','q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p', '[', ']',
-    '\n', 0,  'a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l', ';','\'', '`',
-    0,  '\\', 'z', 'x', 'c', 'v', 'b', 'n', 'm', ',', '.', '/', 0,   '*',
-    0,   ' ',  0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
-    0,   0,    0,   0,   0,   0,  '-',  0,   0,   0,  '+',  0,   0,   0,
-    0,   0,    0,   0,   0,   0,   0,   0,   0,   0,   0,   0
+// Stroupe-Strupe
+struct KeyboardState {
+    bool          present;
+    unsigned short base;
 };
-
-// QWERTY majuscules (Shift)
-static const char QWERTY_UPPER[128] = {
-    0,   27,  '!', '@', '#', '$', '%', '^', '&', '*', '(', ')', '_', '+',
-    '\b','\t','Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P', '{', '}',
-    '\n', 0,  'A', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L', ':', '"', '~',
-    0,   '|', 'Z', 'X', 'C', 'V', 'B', 'N', 'M', '<', '>', '?', 0,   '*',
-    0,   ' ',  0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
-    0,   0,    0,   0,   0,   0,  '-',  0,   0,   0,  '+',  0,   0,   0,
-    0,   0,    0,   0,   0,   0,   0,   0,   0,   0,   0,   0
-};
-
-// AZERTY minuscules
-static const char AZERTY_LOWER[128] = {
-    0,   27,  '&', 'e', '"', '\'','(', '-', 'e', '_', 'c', 'a', ')', '=',
-    '\b','\t','a', 'z', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p', '^', '$',
-    '\n', 0,  'q', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l', 'm', 'u', '`',
-    0,   '*', 'w', 'x', 'c', 'v', 'b', 'n', ',', ';', ':', '!', 0,   '*',
-    0,   ' ',  0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
-    0,   0,    0,   0,   0,   0,  '-',  0,   0,   0,  '+',  0,   0,   0,
-    0,   0,    0,   0,   0,   0,   0,   0,   0,   0,   0,   0
-};
-
-// AZERTY majuscules (Shift)
-static const char AZERTY_UPPER[128] = {
-    0,   27,  '1', '2', '3', '4', '5', '6', '7', '8', '9', '0', ']', '+',
-    '\b','\t','A', 'Z', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P', '^', '$',
-    '\n', 0,  'Q', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L', 'M', '%', '~',
-    0,   'u', 'W', 'X', 'C', 'V', 'B', 'N', '?', '.', '/', '!', 0,   '*',
-    0,   ' ',  0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
-    0,   0,    0,   0,   0,   0,  '-',  0,   0,   0,  '+',  0,   0,   0,
-    0,   0,    0,   0,   0,   0,   0,   0,   0,   0,   0,   0
-};
-
+static KernelAPI* g_api = nullptr;
+static KeyboardState  keyb  = { false, 0 };
 // ============================================================
 // Scancodes spéciaux
 // ============================================================
@@ -60,13 +22,23 @@ static const unsigned char SC_CAPSLOCK  = 0x3A;
 static const unsigned char SC_CTRL      = 0x1D;
 static const unsigned char SC_ALT       = 0x38;
 
-// ============================================================
-// Layout sélectionnable
-// ============================================================
-enum KeyboardLayout {
-    LAYOUT_QWERTY = 0,
-    LAYOUT_AZERTY = 1
-};
+extern "C" __attribute__((visibility("default"))) int driver_entry(KernelAPI* api) {
+    // 1. Initialiser le pointeur API en premier
+    g_api = api;
+
+    // 2. Vérifier les pointeurs critiques
+    if (!g_api)               return -10;
+    if (!g_api->print)        return -11;
+    if (!g_api->outb)         return -12;
+    if (!g_api->inb)          return -13;
+    if (!g_api->register_device) return -14;
+
+    // 3. Initialiser l'état du device
+    keyb.base    = 0x220;
+    sb16.present = false;
+    g_api->println(" Standart I/O Keyboard Driver | (C) Rational Systems ");
+}
+
 
 class Keyboard {
     bool shift    = false;
@@ -75,18 +47,7 @@ class Keyboard {
     bool alt      = false;
     KeyboardLayout layout = LAYOUT_QWERTY;
 
-    // Sélectionner la bonne table selon l'état
-    char translate(unsigned char scancode) {
-        bool upper = shift ^ capslock;  // XOR : shift OU capslock mais pas les deux
 
-        const char* table;
-        if (layout == LAYOUT_AZERTY)
-            table = upper ? AZERTY_UPPER : AZERTY_LOWER;
-        else
-            table = upper ? QWERTY_UPPER : QWERTY_LOWER;
-
-        return table[scancode];
-    }
 
     // Gérer les touches modificatrices
     // Retourne true si c'était une touche modificatrice
@@ -107,8 +68,6 @@ class Keyboard {
     }
 
 public:
-    void set_layout(KeyboardLayout l) { layout = l; }
-    KeyboardLayout get_layout()       { return layout; }
     bool is_shift()    { return shift; }
     bool is_capslock() { return capslock; }
     bool is_ctrl()     { return ctrl; }
@@ -145,6 +104,6 @@ public:
         if (handle_modifier(scancode)) return 0;
         if (scancode & 0x80) return 0;
 
-        return translate(scancode);
+        return scancode;
     }
 };

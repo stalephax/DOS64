@@ -48,8 +48,9 @@ public:
     void print(const char* str) {
         for (int i = 0; str[i]; i++) putchar(str[i]);
     }
-    
-
+    void print_fail() {println("Operation failed miserably. ");}
+    void print_fuccess() {println("Operation failed successfully. ");}
+    void print_success() {println("Operation done successfull !");}
 
     void println(const char* str) {
         print(str);

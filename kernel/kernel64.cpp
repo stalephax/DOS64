@@ -182,33 +182,7 @@ static void init_status(const char* msg, int line, bool ok) {
     print(msg, line, t_color(ok ? LIGHT_GREEN : LIGHT_RED));
 }
 
-// table de traduction pour les touches de claviers configurables : QWERTY par défaut, mais on peut imaginer d'autres dispositions plus tard (AZERTY, QWERTZ, Dvorak, Bépo, etc.) — pour l'instant on s'en sert juste pour afficher les touches appuyées dans les tests de clavier, mais ça peut aussi servir pour une future commande "showkey" ou un mode de saisie de texte dans le shell
-// QWERTY minuscules
-static const char KEY_LOWER[128] = {
-    0,   27,  '1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '-', '=',
-    '\b','\t','q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p', '[', ']',
-    '\n', 0,  'a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l', ';','\'', '`',
-    0,  '\\', 'z', 'x', 'c', 'v', 'b', 'n', 'm', ',', '.', '/', 0,   '*',
-    0,   ' ',  0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
-    0,   0,    0,   0,   0,   0,  '-',  0,   0,   0,  '+',  0,   0,   0,
-    0,   0,    0,   0,   0,   0,   0,   0,   0,   0,   0,   0
-};
 
-// QWERTY majuscules (Shift)
-static const char KEY_UPPER[128] = { 
-    0,   27,  '!', '@', '#', '$', '%', '^', '&', '*', '(', ')', '_', '+',
-    '\b','\t','Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P', '{', '}',
-    '\n', 0,  'A', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L', ':', '"', '~',
-    0,   '|', 'Z', 'X', 'C', 'V', 'B', 'N', 'M', '<', '>', '?', 0,   '*',
-    0,   ' ',  0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
-    0,   0,    0,   0,   0,   0,  '-',  0,   0,   0,  '+',  0,   0,   0,
-    0,   0,    0,   0,   0,   0,   0,   0,   0,   0,   0,   0
-};
-
-const char* translate_scancode(unsigned char scancode) {
-    bool upper = kbd->is_shift() ^ kbd->is_capslock();  // XOR : shift OU capslock mais pas les deux
-    return upper ? KEY_UPPER + scancode : KEY_LOWER + scancode;
-}
 
 
 // Helper : afficher une valeur numérique de debug
@@ -407,6 +381,7 @@ void mount_ata() {
     term->println(ata->get_model());
     term->println("ATA driver initialized.");
 }
+
 // --- INTERPRETEUR DE COMMANDES ---
 // ============================================================
 // INTERPRÉTEUR DE COMMANDES — DOS64
@@ -586,7 +561,7 @@ static void cmd_help() {
 
     term->set_color(YELLOW);  term->println("");
     term->set_color(YELLOW);  term->println("-- Disk & Filesystem --");
-    term->set_color(WHITE);
+    term->set_color(WHITE); // bruh missing half of the important commands.
     term->println("  FATFS             Format a volume as FAT32 (Trusted Intaller mode required)");
     term->println("  VOLS              List available volumes");
     term->println("  MOUNT             Initialize ATA driver and mount C:");
@@ -594,10 +569,11 @@ static void cmd_help() {
     term->println("  CD [path]         Change current directory (CD .. to go up)");
     term->println("  TYPE [file]       Display contents of a text file");
     term->println("  MKDIR [name]      Create a new directory");
+    term->println("  RMDIR [name]      Get rid of a directory");
     term->println("  RUN [file]        Load and execute .ELF/.SYS as ELF64");
     term->println("  DVCMGR            List loaded drivers");
     term->println("  DVCMGR i [file]   Load a driver (.SYS/.ELF) now");
-    term->println("  [file(.elf/.sys)] Execute program directly by typing its name");
+    //term->println("  [file(.elf/.sys)] Execute program directly by typing its name"); useless, the first thing everyone has an idea of.
 
     term->set_color(YELLOW);  term->println("");
     term->set_color(YELLOW);  term->println("-- Debug --");
@@ -671,7 +647,7 @@ static void cmd_fatfs(const char* args) {
     static char confirm[8];
     int ci = 0;
     while (ci < 7) {
-        char c = kbd->getchar();
+        char c =kbd->getchar();
         if (c == '\n') break;
         if (c == '\b' && ci > 0) { ci--; term->putchar('\b'); continue; }
         confirm[ci++] = c;
@@ -714,6 +690,43 @@ static void cmd_fatfs(const char* args) {
         term->println("Format failed.");
         term->print(" Operation failed miserably. ");
         term->set_color(WHITE);
+    }
+}
+static void cmd_keymap(const char* arg) {
+    if (!arg || !arg[0]) {
+        term->print("Current layout: ");
+        term->println(kbd->get_layout_name());
+        term->println("Usage: KEYMAP <file.ktt>");
+        return;
+    }
+
+    // Résoudre le chemin
+    char resolved[256];
+    pm->resolve(arg, resolved);
+
+    FAT32* cur = current_fs();
+    if (!cur) { term->println("No filesystem."); return; }
+
+    FAT32_File f = cur->open(resolved);
+    if (!f.valid) {
+        term->print("Layout file not found: ");
+        term->println(arg);
+        return;
+    }
+
+    // Allouer et charger le fichier
+    unsigned char* buf = (unsigned char*)heap->malloc(f.file_size);
+    if (!buf) { term->println("Out of memory."); return; }
+
+    cur->read_file(&f, buf, f.file_size);
+
+    if (kbd->load_layout(buf, f.file_size)) {
+        term->print("Layout loaded: ");
+        term->println(kbd->get_layout_name());
+        // Ne pas libérer buf — le layout reste en mémoire !
+    } else {
+        term->println("Invalid layout file.");
+        heap->free(buf);
     }
 }
 static void cmd_mem() {
@@ -926,7 +939,7 @@ static void cmd_type(const char* path) {
         file_buf[read_size] = '\0';
         term->println((char*)file_buf);
     } else {
-        term->println("Error reading file.");
+        term->println("ERR reading file.");
     }
 }
 static void cmd_vols() {
@@ -972,6 +985,28 @@ static void cmd_mkdir(const char* name) {
     }
 }
 
+// son frère jumeau maléfique
+static void cmd_rmdir(const char* name) {
+    if (!require_fs()) return;
+    if (!require_arg(name, 0)) return;
+    FAT32* cur = current_fs();
+    if (!cur || !cur->is_mounted()) {  }
+
+    char resolved[256];
+    pm->resolve(name, resolved);
+
+    if (cur->mkdir(resolved)) {
+        term->print("Directory created: ");
+        term->println(name);
+    } else {
+        term->println("Failed to create directory.");
+        term->println("(Directory may already exist or disk is full)");
+        term->print_fail();
+    }
+}
+
+
+
 static void cmd_run(const char* path) {
     if (!require_fs()) return;
     if (!require_arg(path, 0)) return;
@@ -986,11 +1021,12 @@ static void cmd_run(const char* path) {
     int code = run_resolved_path(runnable); // si l'opération échoue, code < 0, sinon c'est le code de retour du programme, et a indique son execution correcte
 
     switch (code) {
-        case -100: term->println("Error: file disappeared before execution."); break;
-        case -101: term->println("Not enough memory to load program."); break;
-        case -1: term->println("Error: not a valid ELF file."); break;
-        case -2: term->println("Error: not an executable ELF."); break;
-        case -3: term->println("Error: not x86_64 architecture."); break;
+        case -100: term->println("ERR: file disappeared before execution."); break;
+        case -101: term->println("ERR: Not enough memory to load program."); break;
+        case -1:   term->println("ERR: not a valid ELF file."); break;
+        case -2:   term->println("ERR: not an executable ELF."); break;
+        case -3:   term->println("ERR: not x86_64 architecture."); break;
+        case 67:   term->println("ERR: the software manufacturer found this joke funny."); break;
         default: {
             char ret[16];
             ulltoa((unsigned long long)code, ret);
@@ -1056,13 +1092,14 @@ static void cmd_dvcmgr(const char* args) {
     }
 
     switch (code) {
-        case -100: term->println("Error: driver file disappeared before execution."); break;
+        case -100: term->println("ERR: driver file disappeared before execution."); break;
         case -101: term->println("Not enough memory to load driver."); break;
-        case -1: term->println("Error: not a valid ELF file."); break;
-        case -2: term->println("Error: not an executable ELF."); break;
-        case -3: term->println("Error: not x86_64 architecture."); break;
+        case -1: term->println("ERR: not a valid ELF file."); break;
+        case -2: term->println("ERR: not an executable ELF."); break;
+        case -3: term->println("ERR: not x86_64 architecture."); break;
         default: term->println("Driver start failed."); break;
     }
+    term->println("NOTICE : to know a driver installed correctly, the exit code must be 0 !");
 }
 
 // ============================================================
@@ -1176,6 +1213,8 @@ void interpret_command(const char* cmd) {
     if      (strcmp(cmd, "help") == 0)              cmd_help();
     else if (strcmp(cmd, "clear") == 0)             cmd_clear();
     else if (strcmp(cmd, "mem") == 0)               cmd_mem();
+    else if (strcmp(cmd, "keymap") == 0)            cmd_keymap(nullptr);
+    else if (strncmp(cmd, "keymap ", 7) == 0)    cmd_keymap(cmd + 7);
     else if (strncmp(cmd, "echo ", 5) == 0)         cmd_echo(cmd + 5);
     else if (strcmp(cmd, "shutup") == 0)            cmd_shutdown('s');
     else if (strncmp(cmd, "shutup r", 8) == 0)      cmd_shutdown('r');
@@ -1197,7 +1236,7 @@ void interpret_command(const char* cmd) {
     // Dans le dispatch :
     else if (strncmp(cmd, "rename ", 7) == 0)   cmd_rename(cmd + 7);
     else if (strncmp(cmd, "del ", 4) == 0)      cmd_del(cmd + 4);
-    //else if (strncmp(cmd, "copy ", 5) == 0)     cmd_copy(cmd + 5); unused
+    //else if (strncmp(cmd, "xcopy ", 5) == 0)     cmd_xcopy(cmd + 5); unused
     // --- Debug ---
     else if (strcmp(cmd, "laxative") == 0)          cmd_laxative();
     else if (strncmp(cmd, "wraw ", 5) == 0)         cmd_wraw(cmd + 5);
@@ -1226,13 +1265,14 @@ extern "C" void kernel_main(unsigned long long mb_addr) {
 
     // Buffer de saisie
     static char input[256];
+    int i_writecurpos = 0; // position d'écriture
     int input_len = 0;
 
     while (power) {
         cursor->update(mouse);
 
         // Lire le clavier (non bloquant)
-        char c = *translate_scancode(kbd->poll());  // ← utilise poll() au lieu de getchar() !
+        char c = kbd->poll();  // ← utilise poll() au lieu de getchar() !
         if (!c) continue;
         
         if (c == '\n') {
@@ -1255,6 +1295,7 @@ extern "C" void kernel_main(unsigned long long mb_addr) {
             if (input_len > 0) {
                 input_len--;
                 term->putchar('\b');
+                i_writecurpos = input_len;
             }
             //term->update_cursor();
 
@@ -1263,8 +1304,10 @@ extern "C" void kernel_main(unsigned long long mb_addr) {
             if (input_len < 255) {
                 input[input_len++] = c;
                 term->putchar(c);
+                i_writecurpos = input_len;
             }
             //term->update_cursor();
         }
     }
 }
+// FIN du kernel

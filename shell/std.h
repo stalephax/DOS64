@@ -1,4 +1,5 @@
 // Programme test — syscalls DOS64
+#pragma once
 #include "../kernel/standart.h"
 #include "../kernel/memory.h"
 #define SYS_PRINT   0
@@ -78,6 +79,9 @@ static void draw_rect(int x, int y, int w, int h, unsigned char c) {
             sys_gfx_pixel(xx, yy, c);
 }
 
+
+
+// RS Sérif
 static void glyph5x7(char c, unsigned char out[7]) {
     for (int i = 0; i < 7; i++) out[i] = 0;
     if (c >= 'a' && c <= 'z') c = c - 32;
@@ -128,7 +132,9 @@ static void glyph5x7(char c, unsigned char out[7]) {
         case ')': { unsigned char g[7]={8,4,2,2,2,4,8}; for(int i=0;i<7;i++) out[i]=g[i]; } break;
         case '!': { unsigned char g[7]={4,4,4,4,4,0,4}; for(int i=0;i<7;i++) out[i]=g[i]; } break;
         case '?': { unsigned char g[7]={14,17,1,2,4,0,4}; for(int i=0;i<7;i++) out[i]=g[i]; } break;
-        case ' ': default: break;
+        case ' ': { unsigned char g[7]={0,0,0,0,0,0,0}; for(int i=0;i<7;i++) out[i]=g[i]; } break;
+        default: { unsigned char g[7]={14,17,1,2,4,0,4}; for(int i=0;i<7;i++) out[i]=g[i]; } break;
+        break;
     }
 }
 
@@ -175,7 +181,19 @@ static inline char sys_getchar() {
 static inline void sys_gfx_init() {
     asm volatile("mov $7, %%rax\nint $0x80\n" ::: "rax");
 }
-
+static void* sys_malloc(unsigned long long size) {
+    void* result;
+    asm volatile(
+        "mov $2, %%rax\n"
+        "mov %1, %%rdi\n"
+        "int $0x80\n"
+        "mov %%rax, %0\n"
+        : "=r"(result)
+        : "r"(size)
+        : "rax", "rdi"
+    );
+    return result;
+}
 static inline void sys_gfx_clear(unsigned char color) {
     asm volatile(
         "mov $8, %%rax\n"
@@ -228,6 +246,7 @@ static void alloc(long size) {
     );
 }
 
+
 static void free(long size) {
     asm volatile(
         "mov $3, %%rax\n" // SYS_FREE
@@ -237,3 +256,9 @@ static void free(long size) {
     );
 
 }
+class Allocator {
+public:
+    void* malloc(unsigned long long size) { return sys_malloc(size); }
+    void  free(void* p) { /* syscall SYS_FREE */ }
+};
+

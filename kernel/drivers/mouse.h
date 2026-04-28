@@ -27,7 +27,7 @@ class PS2Mouse {
         outb(0x60, val);
     }
 
-    unsigned char read() {
+    char read() {
         wait_read();
         return inb(0x60);
     }
