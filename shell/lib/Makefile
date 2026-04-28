@@ -3,7 +3,7 @@ CXX = g++
 CXXFLAGS = -ffreestanding -fno-exceptions -fno-rtti -nostdlib \
            -fno-pic -no-pie -mcmodel=small
 
-SRCS = stdcalls.cpp stdstring.cpp math.cpp
+SRCS = stdcalls.cpp stdstring.cpp math.cpp stdio.cpp
 OBJS = $(SRCS:.cpp=.o)
 
 libdos64.lib: $(OBJS)

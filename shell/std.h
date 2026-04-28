@@ -37,37 +37,7 @@
 
 
 static inline void sys_gfx_pixel(int x, int y, unsigned char color);
-static inline long long sys_fs_read(const char* path, void* buf, unsigned long long max_size) {
-    unsigned long long out;
-    asm volatile(
-        "mov $10, %%rax\n"
-        "mov %1, %%rdi\n"
-        "mov %2, %%rsi\n"
-        "mov %3, %%rdx\n"
-        "int $0x80\n"
-        "mov %%rax, %0\n"
-        : "=r"(out)
-        : "r"(path), "r"(buf), "r"(max_size)
-        : "rax", "rdi", "rsi", "rdx"
-    );
-    return (long long)out;
-}
 
-static inline long long sys_fs_write(const char* path, const void* buf, unsigned long long size) {
-    unsigned long long out;
-    asm volatile(
-        "mov $11, %%rax\n"
-        "mov %1, %%rdi\n"
-        "mov %2, %%rsi\n"
-        "mov %3, %%rdx\n"
-        "int $0x80\n"
-        "mov %%rax, %0\n"
-        : "=r"(out)
-        : "r"(path), "r"(buf), "r"(size)
-        : "rax", "rdi", "rsi", "rdx"
-    );
-    return (long long)out;
-}
 
 static inline void sys_gfx_textmode() {
     asm volatile("mov $12, %%rax\nint $0x80\n" ::: "rax");

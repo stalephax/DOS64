@@ -1,4 +1,4 @@
-#include "dos64.h"
+#include "std.h"
 
 long long abs(long long x)              { return x < 0 ? -x : x; }
 long long min(long long a, long long b) { return a < b ? a : b; }

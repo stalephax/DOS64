@@ -1,6 +1,7 @@
 #pragma once
 #include "prompt.h"
 #include "memory.h"
+#include "vfs.h"
 #include "standart.h"
 #include "drivers/io.h"
 #include "drivers/keyboard.h"
@@ -28,8 +29,10 @@ extern HeapAllocator* heap;
 extern Keyboard* kbd;
 extern VGAGraphics* vga;
 extern FAT32* fs;
+extern PathManager* pm; // ça ne trouve pas ou quoi? fdp
 extern bool power;
 extern "C" VGAGraphics* ensure_vga();
+static FAT32* current_fs();
 
 // Contexte d'un programme en cours d'exécution
 struct ProgramContext {
@@ -145,25 +148,7 @@ extern "C" void interrupt_handler_syscall(
         }
         // Dans interrupt_handler_syscall(), ajouter :
 
-case 11:  // SYS_FS_READ — lire un fichier
-{
-    const char* path = (const char*)arg1;
-    char*       buf  = (char*)arg2;
-    unsigned long long max = arg3;
-
-    FAT32* cur = current_fs_for_path(path);
-    if (!cur) { asm volatile("mov $-1, %%rax" ::: "rax"); break; }
-
-    char resolved[256];
-    pm->resolve(path, resolved);
-    FAT32_File f = cur->open(resolved);
-    if (!f.valid) { asm volatile("mov $-1, %%rax" ::: "rax"); break; }
-
-    unsigned int to_read = f.file_size < max ? f.file_size : max;
-    cur->read_file(&f, (unsigned char*)buf, to_read);
-    asm volatile("mov %0, %%rax" :: "r"((long long)to_read) : "rax");
-    break;
-}
+        
 
 case 12:  // SYS_FS_WRITE — écrire un fichier
 {
@@ -207,12 +192,7 @@ case 20:  // SYS_SETCWD
     break;
 }
 
-        case SYS_GFX_TEXTMODE:
-            ensure_vga()->text_mode();
-            term->set_color(0x0F);
-            term->clear();
-            term->update_cursor();
-            break;
+        
 
     }
 }

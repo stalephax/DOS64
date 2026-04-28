@@ -1,6 +1,7 @@
 #pragma once
 // Fonctions d'accès aux ports I/O
 #include "../std.h"
+
 // Lire un octet depuis un port I/O
 static inline unsigned char inb(unsigned short port) {
     unsigned char val;
@@ -23,3 +24,9 @@ static inline unsigned short inw(unsigned short port) {
 static inline void outw(unsigned short port, unsigned short val) {
     asm volatile ("outw %0, %1" : : "a"(val), "Nd"(port));
 }
+
+//g++ -ffreestanding -fno-exceptions -fno-rtti -nostdlib \
+    -fno-pic -no-pie -mcmodel=small \
+    -Wl,-e,driver_entry \
+    -T shell/drv/drv.ld \
+    shell/drv/netwire.cpp -o shell/drv/netwire.sys

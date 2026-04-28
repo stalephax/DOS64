@@ -1,11 +1,11 @@
-#include "../kernel/apicore/kapi.h"
+#include "../../kernel/apicore/kapi.h"
 
 // ============================================================
 // NETWIRE — Ethernet Network Driver for DOS64
 // ============================================================
 // Supports basic NIC initialization and packet transmission
 // Registers as DEV_NETWORK device
-
+inline void* operator new(unsigned long, void* p) { return p; }
 // Intel 82540EM/82545EM emulated NIC (QEMU)
 #define E1000_REG_CTRL      0x00000  // Device Control
 #define E1000_REG_STATUS    0x00008  // Device Status
@@ -44,7 +44,7 @@ struct RxDescriptor {
     unsigned char errors;
     unsigned short special;
 };
-
+// stupid bullshit
 struct TxDescriptor {
     unsigned long long buffer_addr;
     unsigned short length;
@@ -274,8 +274,8 @@ extern "C" int driver_main(KernelAPI* api) {
     // Attempt to initialize NIC at emulated PCI address (QEMU)
     // For real hardware, you'd need PCI enumeration
     unsigned long long bar0 = 0xFEBC0000;  // QEMU default E1000 BAR0
-
-    nic = new EthernetNIC();
+    // this keyword mess things around. the Linker is a stupid nigger
+    nic = new EthernetNIC;
     if (!nic) {
         api->println("[NETWIRE] Failed to allocate NIC object");
         return -2;
@@ -292,6 +292,6 @@ extern "C" int driver_main(KernelAPI* api) {
     // Register device with kernel
     api->register_device("NETWIRE0", nic, 3);  // 3 = DEV_NETWORK
 
-    api->println("[NETWIRE] Driver loaded successfully");
+    api->println(" NetWire Ethernet I/O for DOS64 | (C) Rational Systems ");
     return 0;
 }
