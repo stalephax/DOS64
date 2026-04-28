@@ -33,8 +33,11 @@ shell/%.o: shell/%.cpp
 hello.elf: shell/hello.o shell/shell.ld
 	ld -m elf_x86_64 -T shell/shell.ld -nostdlib -o $@ shell/hello.o
 
-gedit.elf: shell/gedit.o shell/shell.ld
-	ld -m elf_x86_64 -T shell/shell.ld -nostdlib -L shell/lib -l libdos64.lib \ -o $@ shell/gedit.o
+shell/lib/libdos64.lib:
+	$(MAKE) -C shell/lib libdos64.lib
+
+gedit.elf: shell/gedit.o shell/shell.ld shell/lib/libdos64.lib
+	ld -m elf_x86_64 -T shell/shell.ld -nostdlib -o $@ shell/gedit.o shell/lib/libdos64.lib
 
 keyboard.sys: drv/keyb.o shell/drv/drv.ld
 	ld -m elf_x86_64 -T shell/drv/drv.ld -nostdlib -o $@ shell/drv/keyb.o
