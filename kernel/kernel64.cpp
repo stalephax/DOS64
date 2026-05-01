@@ -35,16 +35,9 @@
 
 
 
-
-
-<<<<<<< codex/start-development-of-ms-dos-executor-module-kdj4ms
-
-=======
-////////////////////////////////////:
-/// OBJETS DU KERNEL
-////////////////////////////////////;
->>>>>>> main
-
+// -------------------------------------
+// KERNEL OBJECTS
+// -------------------------------------
 
 inline void* operator new(unsigned long, void* p) { return p; }
 // Adresse mémoire du buffer VGA (texte mode)
@@ -540,11 +533,11 @@ static int run_resolved_path(const char* path, bool is_driver = false) {
                 current_program.exit_code = dos_exit;
                 code = dos_exit;
             } else if (code == -10) {
-                term->println("Real-mode CPU: unsupported opcode (expected for large DOS games).");
+                term->println(" ERR: unsupported opcode (expected for large DOS games).");
             } else if (code == -20 || code == -21) {
-                term->println("Real-mode interrupt not implemented yet (BIOS/DOS).");
+                term->println(" ERR: Real-mode interrupt not implemented yet (BIOS/DOS).");
             } else if (code == -8) {
-                term->println("Real-mode execution timed out (step budget exceeded).");
+                term->println("ERR: Real-mode execution timed out (step budget exceeded).");
             }
         }
         if (psp) heap->free(psp);
