@@ -7,6 +7,7 @@
 #include "drivers/mouse.h" // pour les tests de souris, même remarque que pour FAT32.h
 #include "elf64.h" // pour les tests de chargement d'ELF, même remarque que pour FAT32.h
 #include "idt.h" // pour les tests d'interruptions, même remarque que pour FAT32.h
+#include "mzexe.h"
 #include "drivers/beep.h" // pour les tests de son, même remarque que pour FAT32.h
 #include "drivers/acpi.h" // pour les tests d'ACPI, même remarque que pour FAT32.h
 #include "vmouse.h"
@@ -50,6 +51,7 @@ static unsigned char heap_buf[sizeof(HeapAllocator)];
 static unsigned char ata_buf[sizeof(ATADriver)];
 static unsigned char fat_buf[sizeof(FAT32)];
 static unsigned char elf_buf[sizeof(ELF64Loader)];
+static unsigned char mz_buf[sizeof(MZExeLoader)];
 static unsigned char idt_buf[sizeof(IDT)];
 static unsigned char vga_buf[sizeof(VGAGraphics)];
 static unsigned char beep_buf[sizeof(Beeper)];
@@ -74,6 +76,7 @@ ATADriver* ata;
 IDT* idt;
 FAT32* fs; // système de fichiers FAT32, pour les tests de lecture de disque
 ELF64Loader* elf_64; // pour les tests de chargement d'ELF
+MZExeLoader* mz_exe;
 VGAGraphics* vga; // pour les tests de vidéo
 Beeper* beep; // pour les tests de son
 PS2Mouse* mouse; // pour les tests de souris
@@ -256,6 +259,7 @@ void init(unsigned long long mb_addr) {
     // PHASE 6 : ELF64 Loader
     // --------------------------------------------------------
     elf_64 = new (elf_buf) ELF64Loader(heap);
+    mz_exe = new (mz_buf) MZExeLoader(heap);
     init_status("ELF64 Loader    [ OK ]", 7, true);
 
     // --------------------------------------------------------
@@ -461,6 +465,12 @@ static bool resolve_runnable_path(const char* in_path, bool prefer_sys, char* ou
         if (f.valid) return true;
     }
 
+
+    if (!prefer_sys && append_ext(in_path, ".EXE", out_path, out_cap)) {
+        pm->resolve(out_path, resolved);
+        f = cur->open(resolved);
+        if (f.valid) return true;
+    }
     // 3) Fallback inverse
     if (append_ext(in_path, prefer_sys ? ".ELF" : ".SYS", out_path, out_cap)) {
         pm->resolve(out_path, resolved);
@@ -508,6 +518,19 @@ static int run_resolved_path(const char* path, bool is_driver = false) {
     if (is_driver) {
         term->println("Calling load_and_call_driver...");
         code = elf_64->load_and_call_driver(buf, f.file_size, &g_kapi);
+    } else if (mz_exe && mz_exe->is_mz_exe(buf, f.file_size)) {
+        term->println("MZ executable detected.");
+        RealModeRegs regs;
+        DOSPSP* psp = nullptr;
+        code = mz_exe->load_stub_environment(buf, f.file_size, &regs, &psp);
+        if (code == 0) {
+            term->println("Real-mode DOS environment initialized (stub).");
+            term->println("INT 21h/BIOS emulation not implemented yet.");
+            current_program.running = false;
+            current_program.exit_code = 0;
+            code = 0;
+        }
+        if (psp) heap->free(psp);
     } else {
         code = elf_64->load_and_run(buf, f.file_size);
     }
@@ -570,7 +593,7 @@ static void cmd_help() {
     term->println("  TYPE [file]       Display contents of a text file");
     term->println("  MKDIR [name]      Create a new directory");
     term->println("  RMDIR [name]      Get rid of a directory");
-    term->println("  RUN [file]        Load and execute .ELF/.SYS as ELF64");
+    term->println("  RUN [file]        Load .ELF/.SYS/.EXE (EXE = real-mode stub)");
     term->println("  DVCMGR            List loaded drivers");
     term->println("  DVCMGR i [file]   Load a driver (.SYS/.ELF) now");
     //term->println("  [file(.elf/.sys)] Execute program directly by typing its name"); useless, the first thing everyone has an idea of.
@@ -1197,6 +1220,20 @@ void interpret_command(const char* cmd) {
             token_with_ext[i++] = 'S';
             token_with_ext[i++] = 'Y';
             token_with_ext[i++] = 'S';
+            token_with_ext[i] = '\0';
+
+            pm->resolve(token_with_ext, resolved);
+            found = fat_file_exists(resolved);
+        }
+
+        // Essai 4 : ajouter .EXE automatiquement (ex: app -> app.EXE)
+        if (!found) {
+            int i = 0;
+            for (; token[i] && i < 255; i++) token_with_ext[i] = token[i];
+            token_with_ext[i++] = '.';
+            token_with_ext[i++] = 'E';
+            token_with_ext[i++] = 'X';
+            token_with_ext[i++] = 'E';
             token_with_ext[i] = '\0';
 
             pm->resolve(token_with_ext, resolved);
