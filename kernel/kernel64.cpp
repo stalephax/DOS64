@@ -37,7 +37,13 @@
 
 
 
+<<<<<<< codex/start-development-of-ms-dos-executor-module-kdj4ms
 
+=======
+////////////////////////////////////:
+/// OBJETS DU KERNEL
+////////////////////////////////////;
+>>>>>>> main
 
 
 inline void* operator new(unsigned long, void* p) { return p; }

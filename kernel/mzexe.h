@@ -54,7 +54,11 @@ private:
 public:
     MZExeLoader(HeapAllocator* h) : heap(h) {}
 
+<<<<<<< codex/start-development-of-ms-dos-executor-module-kdj4ms
     bool is_mz_exe(const unsigned char* data, unsigned int size) {
+=======
+    bool is_mz_exe(const unsigned char* data, unsigned int size) { // détection d'un executable MS-DOS
+>>>>>>> main
         if (!data || size < sizeof(MZHeader)) return false;
         const MZHeader* hdr = (const MZHeader*)data;
         return hdr->signature == 0x5A4D;
@@ -139,6 +143,7 @@ public:
         return 0;
     }
 
+<<<<<<< codex/start-development-of-ms-dos-executor-module-kdj4ms
 
 
     void set_cf(RealModeRegs* r, bool on) {
@@ -230,6 +235,8 @@ public:
                 return -21;
         }
     }
+=======
+>>>>>>> main
     int emulate_step(unsigned char* mem, RealModeRegs* r, bool& halt, int& exit_code) {
         unsigned int pc = linear(r->cs, r->ip);
         unsigned char op = mem[pc];
@@ -241,11 +248,21 @@ public:
                 r->ip += 2;
                 if (intn == 0x20) { halt = true; exit_code = 0; return 0; }
                 if (intn == 0x21) {
+<<<<<<< codex/start-development-of-ms-dos-executor-module-kdj4ms
                     return handle_int21(mem, r, halt, exit_code);
                 }
                 if (intn == 0x10 || intn == 0x16 || intn == 0x1A) {
                     set_cf(r, false);
                     return 0;
+=======
+                    unsigned char ah = (unsigned char)(r->ax >> 8);
+                    if (ah == 0x4C) {
+                        halt = true;
+                        exit_code = (int)(r->ax & 0xFF);
+                        return 0;
+                    }
+                    return -21;
+>>>>>>> main
                 }
                 return -20;
             }
