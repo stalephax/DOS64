@@ -37,7 +37,9 @@
 
 
 
-
+////////////////////////////////////:
+/// OBJETS DU KERNEL
+////////////////////////////////////;
 
 
 inline void* operator new(unsigned long, void* p) { return p; }

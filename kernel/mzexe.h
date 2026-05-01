@@ -43,7 +43,7 @@ private:
 public:
     MZExeLoader(HeapAllocator* h) : heap(h) {}
 
-    bool is_mz_exe(const unsigned char* data, unsigned int size) {
+    bool is_mz_exe(const unsigned char* data, unsigned int size) { // détection d'un executable MS-DOS
         if (!data || size < sizeof(MZHeader)) return false;
         const MZHeader* hdr = (const MZHeader*)data;
         return hdr->signature == 0x5A4D; // 'MZ'
