@@ -372,6 +372,6 @@ extern "C" int main() {
 
 done:
     gfx_exit();
-    exit(0);
+    kms(0);
     return 0;
 }
