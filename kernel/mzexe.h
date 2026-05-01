@@ -195,7 +195,7 @@ public:
                 r->bx = 0;
                 set_cf(r, false);
                 return 0;
-            case 0x3C:  // create file (stub fail)
+            case 0x3C: // create file (stub fail)
             case 0x3D: // open file
             case 0x3E: // close file
             case 0x3F: // read file
