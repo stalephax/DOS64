@@ -54,7 +54,11 @@ private:
 public:
     MZExeLoader(HeapAllocator* h) : heap(h) {}
 
+<<<<<<< codex/start-development-of-ms-dos-executor-module-kdj4ms
+    bool is_mz_exe(const unsigned char* data, unsigned int size) {
+=======
     bool is_mz_exe(const unsigned char* data, unsigned int size) { // détection d'un executable MS-DOS
+>>>>>>> main
         if (!data || size < sizeof(MZHeader)) return false;
         const MZHeader* hdr = (const MZHeader*)data;
         return hdr->signature == 0x5A4D;
@@ -139,6 +143,100 @@ public:
         return 0;
     }
 
+<<<<<<< codex/start-development-of-ms-dos-executor-module-kdj4ms
+
+
+    void set_cf(RealModeRegs* r, bool on) {
+        if (on) r->flags |= 0x0001;
+        else r->flags &= (unsigned short)~0x0001;
+    }
+
+    int handle_int21(unsigned char* mem, RealModeRegs* r, bool& halt, int& exit_code) {
+        unsigned char ah = (unsigned char)(r->ax >> 8);
+        switch (ah) {
+            case 0x00: // terminate
+                halt = true; exit_code = 0; set_cf(r, false); return 0;
+            case 0x09: { // print $ string at DS:DX
+                unsigned int p = linear(r->ds, r->dx);
+                unsigned int guard = 0;
+                while (p < RM_MEM_SIZE && mem[p] != '$' && guard < 4096) {
+                    guard++;
+                    p++;
+                }
+                set_cf(r, false);
+                return 0;
+            }
+            case 0x19: // get current drive -> A:
+                r->ax = (unsigned short)((r->ax & 0xFF00) | 0x00);
+                set_cf(r, false);
+                return 0;
+            case 0x1A: // set DTA
+                set_cf(r, false);
+                return 0;
+            case 0x25: // set int vector
+                set_cf(r, false);
+                return 0;
+            case 0x2A: // get date (dummy)
+                r->cx = 2026;
+                r->dx = (unsigned short)((5 << 8) | 1); // month/day
+                r->ax = (unsigned short)((r->ax & 0xFF00) | 5); // friday
+                set_cf(r, false);
+                return 0;
+            case 0x2C: // get time (dummy)
+                r->cx = (unsigned short)((12 << 8) | 0);
+                r->dx = 0;
+                set_cf(r, false);
+                return 0;
+            case 0x30: // get DOS version
+                r->ax = 0x0700; // 7.00
+                r->bx = 0;
+                set_cf(r, false);
+                return 0;
+            case 0x33: // ctrl-break/check
+                set_cf(r, false);
+                return 0;
+            case 0x35: // get int vector
+                r->es = 0;
+                r->bx = 0;
+                set_cf(r, false);
+                return 0;
+            case 0x3C: // create file (stub fail)
+            case 0x3D: // open file
+            case 0x3E: // close file
+            case 0x3F: // read file
+            case 0x40: // write file
+            case 0x41: // delete
+            case 0x42: // lseek
+            case 0x43: // attributes
+            case 0x47: // get cwd
+            case 0x4E: // find first
+            case 0x4F: // find next
+                r->ax = 0x0001; // invalid function/file (stub)
+                set_cf(r, true);
+                return 0;
+            case 0x44: // ioctl
+                r->dx = 0;
+                set_cf(r, false);
+                return 0;
+            case 0x48: // allocate memory
+                r->ax = 0x0008; // insufficient memory
+                set_cf(r, true);
+                return 0;
+            case 0x49: // free memory
+            case 0x4A: // resize memory
+                set_cf(r, false);
+                return 0;
+            case 0x4C: // terminate with return code
+                halt = true;
+                exit_code = (int)(r->ax & 0xFF);
+                set_cf(r, false);
+                return 0;
+            default:
+                return -21;
+        }
+    }
+=======
+>>>>>>> main
     int emulate_step(unsigned char* mem, RealModeRegs* r, bool& halt, int& exit_code) {
         unsigned int pc = linear(r->cs, r->ip);
         unsigned char op = mem[pc];
@@ -150,6 +248,13 @@ public:
                 r->ip += 2;
                 if (intn == 0x20) { halt = true; exit_code = 0; return 0; }
                 if (intn == 0x21) {
+<<<<<<< codex/start-development-of-ms-dos-executor-module-kdj4ms
+                    return handle_int21(mem, r, halt, exit_code);
+                }
+                if (intn == 0x10 || intn == 0x16 || intn == 0x1A) {
+                    set_cf(r, false);
+                    return 0;
+=======
                     unsigned char ah = (unsigned char)(r->ax >> 8);
                     if (ah == 0x4C) {
                         halt = true;
@@ -157,6 +262,7 @@ public:
                         return 0;
                     }
                     return -21;
+>>>>>>> main
                 }
                 return -20;
             }
