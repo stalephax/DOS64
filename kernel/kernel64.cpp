@@ -524,15 +524,27 @@ static int run_resolved_path(const char* path, bool is_driver = false) {
         term->println("MZ executable detected.");
         RealModeRegs regs;
         DOSPSP* psp = nullptr;
-        code = mz_exe->load_stub_environment(buf, f.file_size, &regs, &psp);
+        unsigned char* rm_mem = nullptr;
+        unsigned short load_seg = 0;
+        code = mz_exe->build_real_mode_image(buf, f.file_size, &rm_mem, &regs, &psp, &load_seg);
         if (code == 0) {
-            term->println("Real-mode DOS environment initialized (stub).");
-            term->println("INT 21h/BIOS emulation not implemented yet.");
-            current_program.running = false;
-            current_program.exit_code = 0;
-            code = 0;
+            term->println("16-bit image loaded + relocations applied.");
+            int dos_exit = 0;
+            code = mz_exe->execute_real_mode_stub(rm_mem, &regs, 200000, &dos_exit);
+            if (code == 0) {
+                current_program.running = false;
+                current_program.exit_code = dos_exit;
+                code = dos_exit;
+            } else if (code == -10) {
+                term->println("Real-mode CPU: unsupported opcode (expected for large DOS games).");
+            } else if (code == -20 || code == -21) {
+                term->println("Real-mode interrupt not implemented yet (BIOS/DOS).");
+            } else if (code == -8) {
+                term->println("Real-mode execution timed out (step budget exceeded).");
+            }
         }
         if (psp) heap->free(psp);
+        if (rm_mem) heap->free(rm_mem);
     } else {
         code = elf_64->load_and_run(buf, f.file_size);
     }
@@ -595,7 +607,7 @@ static void cmd_help() {
     term->println("  TYPE [file]       Display contents of a text file");
     term->println("  MKDIR [name]      Create a new directory");
     term->println("  RMDIR [name]      Get rid of a directory");
-    term->println("  RUN [file]        Load .ELF/.SYS/.EXE (EXE = real-mode stub)");
+    term->println("  RUN [file]        Load .ELF/.SYS/.EXE (EXE = 16-bit real-mode WIP)");
     term->println("  DVCMGR            List loaded drivers");
     term->println("  DVCMGR i [file]   Load a driver (.SYS/.ELF) now");
     //term->println("  [file(.elf/.sys)] Execute program directly by typing its name"); useless, the first thing everyone has an idea of.
