@@ -1,0 +1,12 @@
+[SkinStyles]
+Number=3
+Win10Default=0
+[SkinStyle0]
+Skin=Windows 98 Classic.uis
+Name=Windows 98 Classic
+[SkinStyle1]
+Name=Windows 98 Classic - Modernised
+Skin=Windows 98 Classic - Modernised.sss
+[SkinStyle2]
+Name=Windows 9x Recolourable (WIP)
+Skin=Windows 9x Recolourable.sss
