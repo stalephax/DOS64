@@ -516,10 +516,10 @@ static int run_resolved_path(const char* path, bool is_driver = false) {
 
     int code;
     if (is_driver) {
-        term->println("Calling load_and_call_driver...");
+        term->println("Loading Driver...");
         code = elf_64->load_and_call_driver(buf, f.file_size, &g_kapi);
     } else if (mz_exe && mz_exe->is_mz_exe(buf, f.file_size)) {
-        term->println("MZ executable detected.");
+        term->println("MS-DOS executable detected.");
         RealModeRegs regs;
         DOSPSP* psp = nullptr;
         unsigned char* rm_mem = nullptr;
@@ -534,11 +534,14 @@ static int run_resolved_path(const char* path, bool is_driver = false) {
                 current_program.exit_code = dos_exit;
                 code = dos_exit;
             } else if (code == -10) {
-                term->println("Real-mode CPU: unsupported opcode (expected for large DOS games).");
+                term->println("Real-mode CPU: unsupported opcode (expected for large DOS fancy software)."); // HELLO.EXE saute avec cette erreur
+                term->println("Program Buffer : ");
+                term->print((const char*)rm_mem); // Pour INFO la compilation est en 80186 instructions (car Watcom refuse mystérieusement le reste)
+                term->print_fail(); 
             } else if (code == -20 || code == -21) {
-                term->println("Real-mode interrupt not implemented yet (BIOS/DOS).");
+                term->println("Real-mode interrupt not implemented yet (BIOS/DOS).");term->print_fail(); 
             } else if (code == -8) {
-                term->println("Real-mode execution timed out (step budget exceeded).");
+                term->println("Real-mode execution timed out (step budget exceeded).");term->print_fail(); 
             }
         }
         if (psp) heap->free(psp);
