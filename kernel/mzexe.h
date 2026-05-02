@@ -210,6 +210,14 @@ public:
 
         switch (op) {
             case 0x90: r->ip += 1; return 0;
+
+            case 0xB4: { // MOV AH, imm8
+                unsigned short ax = r->ax;
+                ax = (unsigned short)((ax & 0x00FF) | ((unsigned short)mem[pc + 1] << 8));
+                r->ax = ax;
+                r->ip += 2;
+                return 0;
+            }
             case 0xC3: r->ip = pop16(mem, r); return 0;
             case 0xE8: {
                 signed short rel = (signed short)(mem[pc + 1] | (mem[pc + 2] << 8));
