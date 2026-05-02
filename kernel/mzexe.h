@@ -41,9 +41,18 @@ struct DOSPSP {
     unsigned char reserved[252];
 };
 
+struct RMTraceState {
+    unsigned short cs;
+    unsigned short ip;
+    unsigned char opcode;
+    unsigned char modrm;
+    int reason;
+};
+
 class MZExeLoader {
 private:
     HeapAllocator* heap;
+    RMTraceState last_trace;
     static const unsigned int RM_MEM_SIZE = 1024u * 1024u;
 
     unsigned int linear(unsigned short seg, unsigned short off) const {
@@ -104,7 +113,11 @@ private:
     }
 
 public:
-    MZExeLoader(HeapAllocator* h) : heap(h) {}
+    MZExeLoader(HeapAllocator* h) : heap(h) {
+        last_trace.cs = last_trace.ip = 0;
+        last_trace.opcode = last_trace.modrm = 0;
+        last_trace.reason = 0;
+    }
     bool is_mz_exe(const unsigned char* data, unsigned int size) {
         if (!data || size < sizeof(MZHeader)) return false;
         return ((const MZHeader*)data)->signature == 0x5A4D;
@@ -210,6 +223,7 @@ public:
                 if (intn == 0x20) { halt = true; exit_code = 0; return 0; }
                 if (intn == 0x21) return handle_int21(mem, r, halt, exit_code);
                 if (intn == 0x10 || intn == 0x16 || intn == 0x1A) { set_cf(r, false); return 0; }
+                trace_fault(r, op, intn, -20);
                 return -20;
             }
             case 0x8E: { // MOV Sreg, r/m16 (register only)
@@ -217,18 +231,18 @@ public:
                 unsigned char mod = (unsigned char)((modrm >> 6) & 0x3);
                 unsigned char reg = (unsigned char)((modrm >> 3) & 0x7);
                 unsigned char rm = (unsigned char)(modrm & 0x7);
-                if (mod != 0x3) return -10;
+                if (mod != 0x3) { trace_fault(r, op, modrm, -10); return -10; }
                 unsigned short v = *reg16_by_index(r, rm);
                 if (reg == 0) r->es = v;
                 else if (reg == 2) r->ss = v;
                 else if (reg == 3) r->ds = v;
-                else return -10;
+                else { trace_fault(r, op, modrm, -10); return -10; }
                 r->ip += 2;
                 return 0;
             }
             case 0x88: { // MOV r/m8, r8 (register only)
                 unsigned char modrm = mem[pc + 1];
-                if (((modrm >> 6) & 0x3) != 0x3) return -10;
+                if (((modrm >> 6) & 0x3) != 0x3) { trace_fault(r, op, modrm, -10); return -10; }
                 unsigned char src = (unsigned char)((modrm >> 3) & 0x7);
                 unsigned char dst = (unsigned char)(modrm & 0x7);
                 set_reg8(r, dst, get_reg8(r, src));
@@ -274,7 +288,7 @@ public:
                 unsigned char mod = (unsigned char)((modrm >> 6) & 0x3);
                 unsigned char subop = (unsigned char)((modrm >> 3) & 0x7);
                 unsigned char rm = (unsigned char)(modrm & 0x7);
-                if (mod != 0x3 || subop != 5) return -10;
+                if (mod != 0x3 || subop != 5) { trace_fault(r, op, modrm, -10); return -10; }
                 unsigned char v = get_reg8(r, rm);
                 v = (unsigned char)(v >> imm);
                 set_reg8(r, rm, v);
@@ -282,13 +296,29 @@ public:
                 r->ip += 3;
                 return 0;
             }
-            default: return -10;
+            default: trace_fault(r, op, 0, -10); return -10;
         }
     }
+
+
+    void trace_fault(RealModeRegs* r, unsigned char op, unsigned char modrm, int reason) {
+        last_trace.cs = r->cs;
+        last_trace.ip = r->ip;
+        last_trace.opcode = op;
+        last_trace.modrm = modrm;
+        last_trace.reason = reason;
+    }
+
+    RMTraceState get_last_trace() const { return last_trace; }
 
     int execute_real_mode_stub(unsigned char* mem, RealModeRegs* regs, unsigned int max_steps, int* out_exit) {
         if (!mem || !regs) return -7;
         bool halt = false; int exit_code = 0;
+        last_trace.cs = regs->cs;
+        last_trace.ip = regs->ip;
+        last_trace.opcode = 0;
+        last_trace.modrm = 0;
+        last_trace.reason = 0;
         for (unsigned int i = 0; i < max_steps && !halt; i++) {
             int rc = emulate_step(mem, regs, halt, exit_code);
             if (rc != 0) return rc;

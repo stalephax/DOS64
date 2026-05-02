@@ -533,10 +533,17 @@ static int run_resolved_path(const char* path, bool is_driver = false) {
                 current_program.running = false;
                 current_program.exit_code = dos_exit;
                 code = dos_exit;
-            } else if (code == -10) {
-                term->println("Real-mode CPU: unsupported opcode (expected for large DOS games).");
-            } else if (code == -20 || code == -21) {
-                term->println("Real-mode interrupt not implemented yet (BIOS/DOS).");
+            } else if (code == -10 || code == -20 || code == -21) {
+                RMTraceState tr = mz_exe->get_last_trace();
+                char hex[32];
+                term->println("Real-mode fault trace:");
+                term->print("  reason=");
+                ulltoa((unsigned long long)code, hex); term->println(hex);
+                term->print("  CS="); ulltoa((unsigned long long)tr.cs, hex); term->println(hex);
+                term->print("  IP="); ulltoa((unsigned long long)tr.ip, hex); term->println(hex);
+                term->print("  OPCODE="); ulltoa((unsigned long long)tr.opcode, hex); term->println(hex);
+                term->print("  MODRM/INT="); ulltoa((unsigned long long)tr.modrm, hex); term->println(hex);
+                term->println("Use this opcode to extend the 80186 emulator.");
             } else if (code == -8) {
                 term->println("Real-mode execution timed out (step budget exceeded).");
             }
