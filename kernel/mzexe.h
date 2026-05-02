@@ -53,6 +53,8 @@ class MZExeLoader {
 private:
     HeapAllocator* heap;
     RMTraceState last_trace;
+    void (*host_putc)(char, void*);
+    void* host_ctx;
     static const unsigned int RM_MEM_SIZE = 1024u * 1024u;
 
     unsigned int linear(unsigned short seg, unsigned short off) const {
@@ -117,6 +119,13 @@ public:
         last_trace.cs = last_trace.ip = 0;
         last_trace.opcode = last_trace.modrm = 0;
         last_trace.reason = 0;
+        host_putc = nullptr;
+        host_ctx = nullptr;
+    }
+
+    void bind_host_console(void (*fn)(char, void*), void* ctx) {
+        host_putc = fn;
+        host_ctx = ctx;
     }
     bool is_mz_exe(const unsigned char* data, unsigned int size) {
         if (!data || size < sizeof(MZHeader)) return false;
@@ -185,7 +194,23 @@ public:
         unsigned char ah = (unsigned char)(r->ax >> 8);
         switch (ah) {
             case 0x00: halt = true; exit_code = 0; set_cf(r, false); return 0;
-            case 0x09: set_cf(r, false); return 0;
+            case 0x02: { // write char in DL
+                if (host_putc) host_putc((char)(r->dx & 0xFF), host_ctx);
+                set_cf(r, false);
+                return 0;
+            }
+            case 0x09: { // write DS:DX until $
+                unsigned int p = linear(r->ds, r->dx);
+                unsigned int guard = 0;
+                while (p < RM_MEM_SIZE && guard < 8192) {
+                    unsigned char c = mem[p++];
+                    if (c == '$') break;
+                    if (host_putc) host_putc((char)c, host_ctx);
+                    guard++;
+                }
+                set_cf(r, false);
+                return 0;
+            }
             case 0x19: r->ax = (unsigned short)((r->ax & 0xFF00) | 0x00); set_cf(r, false); return 0;
             case 0x1A: case 0x25: case 0x33: case 0x44: case 0x49: case 0x4A: set_cf(r, false); return 0;
             case 0x2A: r->cx = 2026; r->dx = (unsigned short)((5 << 8) | 2); r->ax = (unsigned short)((r->ax & 0xFF00) | 6); set_cf(r, false); return 0;

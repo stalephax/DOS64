@@ -91,6 +91,11 @@ static unsigned char devtable_buf[sizeof(DeviceTable)];
 DeviceTable* devtable;
 
 // Fonctions wrapper pour la KernelAPI
+static void mz_host_putc(char c, void* ctx) {
+    (void)ctx;
+    if (term) term->putchar(c);
+}
+
 static void kapi_print(const char* s)               { term->print(s); }
 static void kapi_println(const char* s)             { term->println(s); }
 static void kapi_set_color(unsigned char fg, unsigned char bg) { term->set_color(fg, bg); }
@@ -260,6 +265,7 @@ void init(unsigned long long mb_addr) {
     // --------------------------------------------------------
     elf_64 = new (elf_buf) ELF64Loader(heap);
     mz_exe = new (mz_buf) MZExeLoader(heap);
+    mz_exe->bind_host_console(mz_host_putc, nullptr);
     init_status("ELF64 Loader    [ OK ]", 7, true);
 
     // --------------------------------------------------------
