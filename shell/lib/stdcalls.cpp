@@ -68,5 +68,5 @@ void gfx_pixel(int x, int y, unsigned char color) {
 }
 
 void gfx_exit() {
-    asm volatile("mov $10, %%rax\nint $0x80" ::: "rax");
+    asm volatile("mov $12, %%rax\nint $0x80" ::: "rax"); // the system calls should ne be switched or the system will fuckup
 }
