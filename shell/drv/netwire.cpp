@@ -262,36 +262,31 @@ public:
     }
 };
 
-// Global NIC instance
-static EthernetNIC* nic = nullptr;
+
 
 // Entry point for the driver
-extern "C" int driver_main(KernelAPI* api) {
-    if (!api) return -1;
+static unsigned char nic_buf[sizeof(EthernetNIC)];
+static EthernetNIC* nic = nullptr;
 
-    api->println("[NETWIRE] Ethernet Network Driver Loading...");
+extern "C" int driver_entry(KernelAPI* api) {
+    if (!api)          return -10;
+    if (!api->print)   return -11;
+    if (!api->malloc)  return -12;
 
-    // Attempt to initialize NIC at emulated PCI address (QEMU)
-    // For real hardware, you'd need PCI enumeration
-    unsigned long long bar0 = 0xFEBC0000;  // QEMU default E1000 BAR0
-    // this keyword mess things around. the Linker is a stupid nigger
-    nic = new EthernetNIC;
-    if (!nic) {
-        api->println("[NETWIRE] Failed to allocate NIC object");
-        return -2;
-    }
+    api->println("[NETWIRE] Loading Ethernet driver...");
+
+    // Placement new — pas de new dynamique en bare metal
+    nic = new (nic_buf) EthernetNIC;
+
+    unsigned long long bar0 = 0xFEBC0000;  // QEMU E1000 BAR0
 
     if (!nic->init(bar0, api)) {
-        api->println("[NETWIRE] Failed to initialize NIC");
+        api->println("[NETWIRE] NIC init failed.");
         return -3;
     }
 
-    // Print MAC address
     nic->print_mac_address();
-
-    // Register device with kernel
-    api->register_device("NETWIRE0", nic, 3);  // 3 = DEV_NETWORK
-
-    api->println(" NetWire Ethernet I/O for DOS64 | (C) Rational Systems ");
+    api->register_device("NETWIRE0", nic, DEV_NETWORK);
+    api->println(" NETWIRE I/O Internet | Rational Systems. ");
     return 0;
 }

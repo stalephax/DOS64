@@ -4,6 +4,10 @@
 #include "standart.h"
 #include "syscall.h"
 
+//
+//  Executif MS-DOS
+// 
+
 #pragma pack(push, 1)
 struct MZHeader {
     unsigned short signature;

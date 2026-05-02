@@ -532,7 +532,7 @@ static int run_resolved_path(const char* path, bool is_driver = false) {
         unsigned short load_seg = 0;
         code = mz_exe->build_real_mode_image(buf, f.file_size, &rm_mem, &regs, &psp, &load_seg);
         if (code == 0) {
-            term->println("16-bit image loaded + relocations applied.");
+            //term->println("16-bit image loaded + relocations applied."); don't need to know about this anymore
             int dos_exit = 0;
             code = mz_exe->execute_real_mode_stub(rm_mem, &regs, 200000, &dos_exit);
             if (code == 0) {

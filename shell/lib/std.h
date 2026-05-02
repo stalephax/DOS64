@@ -33,7 +33,7 @@ void print_hex(unsigned long long n);
 void printf(const char* fmt, ...);
 char getchar();
 void getline(char* buf, int max);
-void exit(int code);
+void kms(int code);
 
 // --- Mémoire ---
 void* malloc(unsigned long long size);
