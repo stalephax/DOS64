@@ -11,7 +11,7 @@
 .STACK 100h
 
 .DATA
-msg_hello db ' If you see this, this software works fine !'
+msg_hello db 'DOS64 MZ test: hello from 16-bit program.$'
 msg_ver   db 13,10,'DOS version reported by INT 21h/30h -> major=', '$'
 msg_end   db 13,10,'Done.$'
 newline   db 13,10,'$'

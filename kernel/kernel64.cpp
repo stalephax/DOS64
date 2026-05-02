@@ -550,7 +550,6 @@ static int run_resolved_path(const char* path, bool is_driver = false) {
                 term->print("  OPCODE="); ulltoa((unsigned long long)tr.opcode, hex); term->println(hex);
                 term->print("  MODRM/INT="); ulltoa((unsigned long long)tr.modrm, hex); term->println(hex);
                 term->println("Use this opcode to extend the 80186 emulator.");
-                term->print_fail();// so it fails event the program running?
             } else if (code == -8) {
                 term->println("Real-mode execution timed out (step budget exceeded).");
             }
