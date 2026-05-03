@@ -91,6 +91,36 @@ static unsigned char devtable_buf[sizeof(DeviceTable)];
 DeviceTable* devtable;
 
 // Fonctions wrapper pour la KernelAPI
+static int mz_host_bios_int(unsigned char intn, RealModeRegs* r, void* ctx) {
+    (void)ctx;
+    if (!r) return -1;
+
+    if (intn == 0x10) {
+        unsigned char ah = (unsigned char)(r->ax >> 8);
+        unsigned char al = (unsigned char)(r->ax & 0xFF);
+
+        // BIOS video set mode
+        if (ah == 0x00 && al == 0x13) {
+            if (!vga) vga = new (vga_buf) VGAGraphics;
+            vga->init();
+            vga->clear(VGAGraphics::BLACK);
+            return 0;
+        }
+
+        // teletype output fallback
+        if (ah == 0x0E) {
+            if (term) term->putchar((char)al);
+            return 0;
+        }
+        return 0;
+    }
+
+    // keyboard/time interrupts can be stubbed as successful for now.
+    if (intn == 0x16 || intn == 0x1A) return 0;
+
+    return -1;
+}
+
 static void mz_host_putc(char c, void* ctx) {
     (void)ctx;
     if (term) term->putchar(c);
@@ -266,6 +296,7 @@ void init(unsigned long long mb_addr) {
     elf_64 = new (elf_buf) ELF64Loader(heap);
     mz_exe = new (mz_buf) MZExeLoader(heap);
     mz_exe->bind_host_console(mz_host_putc, nullptr);
+    mz_exe->bind_host_bios(mz_host_bios_int, nullptr);
     init_status("ELF64 Loader    [ OK ]", 7, true);
 
     // --------------------------------------------------------
@@ -532,7 +563,7 @@ static int run_resolved_path(const char* path, bool is_driver = false) {
         unsigned short load_seg = 0;
         code = mz_exe->build_real_mode_image(buf, f.file_size, &rm_mem, &regs, &psp, &load_seg);
         if (code == 0) {
-            //term->println("16-bit image loaded + relocations applied."); don't need to know about this anymore
+            term->println("16-bit image loaded + relocations applied.");
             int dos_exit = 0;
             code = mz_exe->execute_real_mode_stub(rm_mem, &regs, 200000, &dos_exit);
             if (code == 0) {

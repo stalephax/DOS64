@@ -4,10 +4,6 @@
 #include "standart.h"
 #include "syscall.h"
 
-//
-//  Executif MS-DOS
-// 
-
 #pragma pack(push, 1)
 struct MZHeader {
     unsigned short signature;
@@ -59,6 +55,8 @@ private:
     RMTraceState last_trace;
     void (*host_putc)(char, void*);
     void* host_ctx;
+    int (*host_bios_int)(unsigned char, RealModeRegs*, void*);
+    void* host_bios_ctx;
     static const unsigned int RM_MEM_SIZE = 1024u * 1024u;
 
     unsigned int linear(unsigned short seg, unsigned short off) const {
@@ -125,11 +123,18 @@ public:
         last_trace.reason = 0;
         host_putc = nullptr;
         host_ctx = nullptr;
+        host_bios_int = nullptr;
+        host_bios_ctx = nullptr;
     }
 
     void bind_host_console(void (*fn)(char, void*), void* ctx) {
         host_putc = fn;
         host_ctx = ctx;
+    }
+
+    void bind_host_bios(int (*fn)(unsigned char, RealModeRegs*, void*), void* ctx) {
+        host_bios_int = fn;
+        host_bios_ctx = ctx;
     }
     bool is_mz_exe(const unsigned char* data, unsigned int size) {
         if (!data || size < sizeof(MZHeader)) return false;
@@ -259,7 +264,14 @@ public:
                 unsigned char intn = mem[pc + 1]; r->ip += 2;
                 if (intn == 0x20) { halt = true; exit_code = 0; return 0; }
                 if (intn == 0x21) return handle_int21(mem, r, halt, exit_code);
-                if (intn == 0x10 || intn == 0x16 || intn == 0x1A) { set_cf(r, false); return 0; }
+                if (intn == 0x10 || intn == 0x16 || intn == 0x1A) {
+                    if (host_bios_int) {
+                        int brc = host_bios_int(intn, r, host_bios_ctx);
+                        if (brc == 0) return 0;
+                    }
+                    set_cf(r, false);
+                    return 0;
+                }
                 trace_fault(r, op, intn, -20);
                 return -20;
             }
