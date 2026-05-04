@@ -30,7 +30,7 @@ static unsigned long long read_rsp() { unsigned long long v; asm volatile("mov %
 static unsigned long long read_rip() { unsigned long long v; asm volatile("lea (%%rip), %0" : "=r"(v)); return v; }
 
 __attribute__((noreturn))
-static void kernel_panic(const char* reason, unsigned long long code = 0) {
+static void fuckup(const char* reason, unsigned long long code = 0) {
     Beeper* beep; // indiquateur sonore
     
     asm volatile(

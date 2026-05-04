@@ -201,16 +201,16 @@ case 20:  // SYS_SETCWD
 extern "C" void interrupt_handler(unsigned long long int_num,
                                    unsigned long long error_code) {
     switch (int_num) {
-        case 0:  kernel_panic("Division by zero",              error_code); break;
-        case 6:  kernel_panic("Invalid instruction (#UD)",     error_code); break;
-        case 8:  kernel_panic("Double Fault (#DF)",            error_code); break;
-        case 13: kernel_panic("General Protection Fault (#GP)", error_code); break;
+        case 0:  fuckup("Division by zero",              error_code); break;
+        case 6:  fuckup("Invalid instruction (#UD)",     error_code); break;
+        case 8:  fuckup("Double Fault (#DF)",            error_code); break;
+        case 13: fuckup("General Protection Fault (#GP)", error_code); break;
         case 14: {
             unsigned long long fault_addr;
             asm volatile("mov %%cr2, %0" : "=r"(fault_addr));
-            kernel_panic("Page Fault - bad address", fault_addr);
+            fuckup("Page Fault - bad address", fault_addr);
             break;
         }
-        default: kernel_panic("Unknown interrupt", int_num); break;
+        default: fuckup("Unknown interrupt", int_num); break;
     }
 }

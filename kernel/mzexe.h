@@ -57,10 +57,105 @@ private:
     void* host_ctx;
     int (*host_bios_int)(unsigned char, RealModeRegs*, void*);
     void* host_bios_ctx;
+    void* port_ctx = nullptr;
+    unsigned char (*port_in_cb)(unsigned short, void*) = nullptr;
+    void (*port_out_cb)(unsigned short, unsigned char, void*) = nullptr;
+
     static const unsigned int RM_MEM_SIZE = 1024u * 1024u;
 
     unsigned int linear(unsigned short seg, unsigned short off) const {
         return ((unsigned int)seg << 4) + off;
+    }
+    FAT32* fs; 
+    FAT32_File open_files[16]; // Table des handles (0-15) pas plus, pas moins
+
+    
+    void init_handles() {
+        for(int i = 0; i < 16; i++) open_files[i].valid = false;
+    }
+    // décodeur RM
+
+    // --- LECTURE/ÉCRITURE MÉMOIRE CORRIGÉES ---
+    
+    void write_mem8(unsigned char* mem, unsigned int phys_addr, unsigned char val) {
+        // On redirige la VGA vers le Framebuffer
+        if (phys_addr >= 0xA0000 && phys_addr <= 0xAFFFF) { 
+            unsigned char* vga_mem = (unsigned char*)0xA0000;
+            vga_mem[phys_addr - 0xA0000] = val;
+        } 
+        // SINON ON ÉCRIT DANS LA RAM (vital !)
+        else if (phys_addr < RM_MEM_SIZE) {
+            mem[phys_addr] = val;
+        }
+    }
+
+    void write_mem16(unsigned char* mem, unsigned int phys_addr, unsigned short val) {
+        write_mem8(mem, phys_addr, (unsigned char)(val & 0xFF));
+        write_mem8(mem, phys_addr + 1, (unsigned char)(val >> 8));
+    }
+
+    unsigned short read_mem16(unsigned char* mem, unsigned int phys_addr) {
+        if (phys_addr + 1 >= RM_MEM_SIZE) return 0;
+        return (unsigned short)(mem[phys_addr] | (mem[phys_addr + 1] << 8));
+    }
+
+    // --- MOTEUR MOD R/M SÉCURISÉ ---
+
+    unsigned int get_effective_address(RealModeRegs* r, unsigned char modrm, unsigned char* mem, unsigned short& ip_offset) {
+        unsigned char mod = (modrm >> 6) & 0x03;
+        unsigned char rm = modrm & 0x07;
+        unsigned short offset = 0;
+        unsigned short segment = r->ds; // DS par défaut
+
+        // 1. Calcul de la base
+        switch (rm) {
+            case 0: offset = r->bx + r->si; break;
+            case 1: offset = r->bx + r->di; break;
+            case 2: offset = r->bp + r->si; segment = r->ss; break; // BP -> SS
+            case 3: offset = r->bp + r->di; segment = r->ss; break; // BP -> SS
+            case 4: offset = r->si; break;
+            case 5: offset = r->di; break;
+            case 6: 
+                if (mod == 0) { // Adresse directe 16-bit
+                    offset = (unsigned short)(mem[linear(r->cs, ip_offset)] | (mem[linear(r->cs, ip_offset + 1)] << 8));
+                    ip_offset += 2; // On consomme 2 octets
+                } else {
+                    offset = r->bp; segment = r->ss;
+                }
+                break;
+            case 7: offset = r->bx; break;
+        }
+
+        // 2. Ajout du déplacement
+        if (mod == 1) { // disp8
+            signed char disp8 = (signed char)mem[linear(r->cs, ip_offset)];
+            offset = (unsigned short)(offset + disp8);
+            ip_offset += 1; // On consomme 1 octet
+        } else if (mod == 2) { // disp16
+            unsigned short disp16 = (unsigned short)(mem[linear(r->cs, ip_offset)] | (mem[linear(r->cs, ip_offset + 1)] << 8));
+            offset = (unsigned short)(offset + disp16);
+            ip_offset += 2; // On consomme 2 octets
+        }
+
+        return linear(segment, offset);
+    }
+
+    unsigned short read_rm16(RealModeRegs* r, unsigned char modrm, unsigned char* mem, unsigned short& ip_offset) {
+        if (((modrm >> 6) & 0x03) == 3) { // Mode REGISTRE
+            return *reg16_by_index(r, modrm & 0x07);
+        } else { // Mode MÉMOIRE
+            unsigned int addr = get_effective_address(r, modrm, mem, ip_offset);
+            return read_mem16(mem, addr);
+        }
+    }
+
+    void write_rm16(RealModeRegs* r, unsigned char modrm, unsigned char* mem, unsigned short& ip_offset, unsigned short val) {
+        if (((modrm >> 6) & 0x03) == 3) { // Mode REGISTRE
+            *reg16_by_index(r, modrm & 0x07) = val;
+        } else { // Mode MÉMOIRE
+            unsigned int addr = get_effective_address(r, modrm, mem, ip_offset);
+            write_mem16(mem, addr, val);
+        }
     }
 
     unsigned short* reg16_by_index(RealModeRegs* r, unsigned char idx) {
@@ -75,6 +170,7 @@ private:
             default: return &r->di;
         }
     }
+    
 
     unsigned char get_reg8(RealModeRegs* r, unsigned char idx) {
         switch (idx & 7) {
@@ -115,8 +211,18 @@ private:
         r->sp += 2;
         return v;
     }
-
+    // don't qualify a method name with it's namespace if it is in the object defined or i'll kill you
+    void write_mem8(unsigned int phys_addr, unsigned char val) { // WTF ?
+        // Si le programme écrit dans la zone VGA (Mode 13h)
+        if (phys_addr >= 0xA0000 && phys_addr <= 0xAFFFF) { 
+            // si cela ne marche pas je vais te tuer
+            unsigned char* vga_mem = (unsigned char*)0xA0000;
+            vga_mem[phys_addr - 0xA0000] = val;
+        } 
+        else return; // échec
+    }
 public:
+    
     MZExeLoader(HeapAllocator* h) : heap(h) {
         last_trace.cs = last_trace.ip = 0;
         last_trace.opcode = last_trace.modrm = 0;
@@ -136,9 +242,47 @@ public:
         host_bios_int = fn;
         host_bios_ctx = ctx;
     }
+    void bind_host_ports(
+        unsigned char (*in_func)(unsigned short, void*),
+        void (*out_func)(unsigned short, unsigned char, void*),
+        void* ctx
+    ) 
+    {
+        this->port_in_cb  = in_func;
+        this->port_out_cb = out_func;
+        this->port_ctx    = ctx;
+    }
+
     bool is_mz_exe(const unsigned char* data, unsigned int size) {
         if (!data || size < sizeof(MZHeader)) return false;
         return ((const MZHeader*)data)->signature == 0x5A4D;
+    }
+        // Dans mzexe.h, ajoutons une fonction pour préparer le PSP directement dans la mémoire émulée
+    int prepare_dos_environment(unsigned char* mem, unsigned short psp_seg, const char* cmd_line) {
+        unsigned int psp_base = psp_seg << 4;
+
+        // 1. Signature de sortie (INT 20h) à l'offset 0
+        mem[psp_base + 0] = 0xCD; 
+        mem[psp_base + 1] = 0x20;
+
+    // 2. Segment de fin de mémoire (souvent 0x9FFF pour 640Ko)
+        unsigned short last_seg = 0x9FFF;
+        mem[psp_base + 2] = (unsigned char)(last_seg & 0xFF);
+        mem[psp_base + 3] = (unsigned char)(last_seg >> 8);
+
+    // 3. Ligne de commande (Offset 0x80)
+    // Format : [taille (1 octet)] [texte] [0x0D]
+        unsigned char len = 0;
+        if (cmd_line) {
+            while (cmd_line[len] && len < 126) {
+                mem[psp_base + 0x81 + len] = (unsigned char)cmd_line[len];
+                len++;
+            }
+        }
+    mem[psp_base + 0x80] = len;       // Longueur
+    mem[psp_base + 0x81 + len] = 0x0D; // Terminateur DOS CR
+
+    return 0;
     }
 
     int build_real_mode_image(const unsigned char* data, unsigned int size,
@@ -158,16 +302,25 @@ public:
         psp->int20[0] = 0xCD; psp->int20[1] = 0x20; psp->last_segment = 0;
         for (int i = 0; i < 252; i++) psp->reserved[i] = 0;
 
+       // Extrait de la logique de chargement mise à jour
         unsigned short psp_seg = 0x1000;
-        unsigned short load_seg = psp_seg + 0x10;
+        unsigned short load_seg = psp_seg + 0x10; // Le code commence après les 256 octets du PSP
+
+// Prépare le PSP dans la mémoire émulée
+        prepare_dos_environment(mem, psp_seg, "ARGS_ICI"); // pas encore d'arguments placés, placeholder ARGS_ICI
+
+// Charge l'image du programme après le PSP
+        
         unsigned int load_linear = linear(load_seg, 0);
         unsigned int image_size = size - header_size;
         if (load_linear + image_size >= RM_MEM_SIZE) { heap->free(psp); heap->free(mem); return -4; }
-
+        for (unsigned int i = 0; i < image_size; i++) {
+            mem[linear(load_seg, 0) + i] = data[header_size + i];
+        }
         for (unsigned int i = 0; i < image_size; i++) mem[load_linear + i] = data[header_size + i];
 
         unsigned int reloc_table = hdr->relocation_table_offset;
-        for (unsigned int i = 0; i < hdr->relocation_count; i++) {
+        for (unsigned int i = 0; i < hdr->relocation_count; i++) { // j'ai mal aux yeux
             unsigned int entry_off = reloc_table + i * sizeof(MZReloc);
             if (entry_off + sizeof(MZReloc) > size) { heap->free(psp); heap->free(mem); return -5; }
             const MZReloc* rr = (const MZReloc*)(data + entry_off);
@@ -200,9 +353,10 @@ public:
 
     int handle_int21(unsigned char* mem, RealModeRegs* r, bool& halt, int& exit_code) {
         (void)mem;
-        unsigned char ah = (unsigned char)(r->ax >> 8);
+        unsigned char ah = (unsigned char)(r->ax >> 8); // int21 Interrupt
         switch (ah) {
-            case 0x00: halt = true; exit_code = 0; set_cf(r, false); return 0;
+            case 0x73: 
+            case 0x00: halt = true; exit_code = 0; set_cf(r, false); return 0; // kill process
             case 0x02: { // write char in DL
                 if (host_putc) host_putc((char)(r->dx & 0xFF), host_ctx);
                 set_cf(r, false);
@@ -241,10 +395,163 @@ public:
             *reg16_by_index(r, op - 0xB8) = (unsigned short)(mem[pc + 1] | (mem[pc + 2] << 8));
             r->ip += 3; return 0;
         }
-
+        // les instructions sont ICI
         switch (op) {
-            case 0x90: r->ip += 1; return 0;
+            // ne toucher à rien ici ou je vous égorge
+            case 0x3D: { // OPEN FILE
+                unsigned int p = linear(r->ds, r->dx);
+                const char* filename = (const char*)&mem[p];
+                int handle = -1;
+                for(int i = 5; i < 16; i++) { // On commence à 5 (0-4 sont réservés par DOS)
+                    if(!open_files[i].valid) { handle = i; break; }
+                }
 
+                if(handle == -1) { r->ax = 0x04; set_cf(r, true); return 0; }
+
+                open_files[handle] = fs->open(filename);
+
+                if(open_files[handle].valid) {
+                    r->ax = (unsigned short)handle;
+                    set_cf(r, false);
+                } else {
+                    r->ax = 0x02; // File not found
+                    set_cf(r, true);
+                }
+                return 0;
+            }
+
+            case 0x3F: { // READ FROM FILE
+                int h = r->bx;
+                if (h < 0 || h >= 16 || !open_files[h].valid) { set_cf(r, true); return 0; }
+
+                unsigned short count = r->cx;
+                unsigned int buffer_addr = linear(r->ds, r->dx);
+
+                // On utilise f.position pour savoir où on en est
+                FAT32_File* f = &open_files[h];
+                
+                // Astuce : On ne lit pas plus que ce qu'il reste dans le fichier
+                if (f->position + count > f->file_size) count = f->file_size - f->position;
+
+                // ICI : Tu dois appeler une version de read_file qui gère l'offset !
+                // Si ta fonction FAT32::read_file ne gère pas f->position, Prince ne chargera rien.
+                bool ok = fs->read_file(f, &mem[buffer_addr], count);
+                //[cite: 15]; c'est quoi cette pourriture?
+
+                if (ok) {
+                    f->position += count; // On avance le curseur
+                    r->ax = count;
+                    set_cf(r, false);
+                } else {
+                    set_cf(r, true);
+                }
+                return 0;
+            }
+
+            case 0x42: { // LSEEK
+                int h = r->bx;
+                if (h < 0 || h >= 16 || !open_files[h].valid) { set_cf(r, true); return 0; }
+
+                unsigned int offset = (unsigned int)((r->cx << 16) | r->dx);
+                unsigned char origin = (unsigned char)(r->ax & 0xFF);
+                FAT32_File* f = &open_files[h];
+
+                if (origin == 0)      f->position = offset;               // Depuis le début
+                else if (origin == 1) f->position += (signed int)offset;  // Depuis position actuelle
+                else if (origin == 2) f->position = f->file_size + (signed int)offset; // Depuis la fin
+
+                // DOS demande de renvoyer la nouvelle position dans DX:AX
+                r->ax = (unsigned short)(f->position & 0xFFFF);
+                r->dx = (unsigned short)(f->position >> 16);
+                set_cf(r, false);
+                return 0;
+            }
+            // je ne sais pas pourquoi j'ai pas mis ça avant mais voila
+            case 0x73: { // JAE / JNB / JNC rel8
+                
+                signed char rel = (signed char)mem[pc + 1];
+                
+
+                bool cf = (r->flags & 0x1) != 0;
+
+                if (!cf) {
+                    r->ip = (unsigned short)(r->ip + 2 + rel);
+                } else {
+                    r->ip += 2; // Sinon, on passe juste à l'instruction suivante
+                }
+                return 0;
+            }
+            case 0x8C: { // MOV r/m16, Sreg
+                unsigned char modrm = mem[pc + 1];
+                unsigned short next_ip = r->ip + 2; // On saute Opcode + ModR/M
+                unsigned char reg_part = (modrm >> 3) & 0x07;
+                unsigned short val = 0;
+
+                switch (reg_part) {
+                    case 0: val = r->es; break;
+                    case 1: val = r->cs; break;
+                    case 2: val = r->ss; break;
+                    case 3: val = r->ds; break;
+                    default: return -11;
+                }
+
+                // La magie opère : si write_rm16 lit une adresse, next_ip avancera tout seul
+                write_rm16(r, modrm, mem, next_ip, val); 
+                r->ip = next_ip; 
+                return 0;
+            }
+
+            case 0x8E: { // MOV Sreg, r/m16
+                unsigned char modrm = mem[pc + 1];
+                unsigned short next_ip = r->ip + 2;
+                unsigned char reg_part = (modrm >> 3) & 0x07;
+                
+                unsigned short val = read_rm16(r, modrm, mem, next_ip);
+
+                switch (reg_part) {
+                    case 0: r->es = val; break;
+                    case 2: r->ss = val; break;
+                    case 3: r->ds = val; break;
+                    default: return -11;
+                }
+                r->ip = next_ip;
+                return 0;
+            }
+
+            case 0x8B: { // MOV r16, r/m16
+                unsigned char modrm = mem[pc + 1];
+                unsigned short next_ip = r->ip + 2;
+                unsigned char dst = (modrm >> 3) & 0x07;
+                
+                unsigned short val = read_rm16(r, modrm, mem, next_ip);
+                *reg16_by_index(r, dst) = val;
+                
+                r->ip = next_ip;
+                return 0;
+            }
+            case 0x90: r->ip += 1; return 0;
+            case 0x75: { 
+                signed char rel = (signed char)mem[pc + 1];
+                bool zf = (r->flags & 0x40) != 0;
+                if (!zf) r->ip = (unsigned short)(r->ip + 2 + rel);
+                else r->ip += 2;
+                return 0;
+            }
+            /* code d'Imbécile heureux
+            // --- NOUVEAU : MOV r16, r/m16 ---
+            case 0x8B: {
+                unsigned char modrm = mem[pc + 1];
+                unsigned char dst = (modrm >> 3) & 7;
+                unsigned char src = modrm & 7;
+                if (((modrm >> 6) & 3) == 3) { // Mode registre à registre
+                    *reg16_by_index(r, dst) = *reg16_by_index(r, src);
+                    r->ip += 2;
+                } else {
+                    // Ici, il faudra plus tard gérer l'accès mémoire [SI], [BX+disp], etc.
+                    trace_fault(r, op, modrm, -10); return -10;
+                }
+                return 0;
+            }*/
             case 0xB4: { // MOV AH, imm8
                 unsigned short ax = r->ax;
                 ax = (unsigned short)((ax & 0x00FF) | ((unsigned short)mem[pc + 1] << 8));
@@ -252,15 +559,99 @@ public:
                 r->ip += 2;
                 return 0;
             }
+            case 0xEE: { // OUT DX, AL
+                
+                unsigned short port = r->dx;
+                unsigned char val = (unsigned char)(r->ax & 0xFF);
+                
+
+                if (this->port_out_cb) {
+                    this->port_out_cb(port, val, this->port_ctx);
+                }
+                r->ip += 1;
+                return 0;
+            }
+
+            case 0xEF: { // OUT DX, AX (16-bit)
+                unsigned short port = r->dx;
+                unsigned short val = r->ax;
+                if (this->port_out_cb) {
+                    this->port_out_cb(port, (unsigned char)(val & 0xFF), this->port_ctx);
+                    this->port_out_cb(port + 1, (unsigned char)(val >> 8), this->port_ctx);
+                }
+                r->ip += 1;
+                return 0;
+            }
             case 0xC3: r->ip = pop16(mem, r); return 0;
-            case 0xE8: {
+            case 0xE8: {  // Ecran de sortie normal
                 signed short rel = (signed short)(mem[pc + 1] | (mem[pc + 2] << 8));
                 unsigned short ret_ip = (unsigned short)(r->ip + 3);
                 push16(mem, r, ret_ip);
                 r->ip = (unsigned short)(ret_ip + rel);
                 return 0;
             }
-            case 0xCD: {
+            case 0x83: { // Group 1 extension (Immediate 8-bit sign-extended)
+                unsigned char modrm = mem[pc + 1];
+                unsigned char subop = (modrm >> 3) & 7;
+                unsigned char rm = modrm & 7;
+                // On récupère la valeur immédiate et on l'étend au format 16 bits
+                signed short imm = (signed char)mem[pc + 2]; 
+                unsigned short* reg = reg16_by_index(r, rm);
+                
+                switch (subop) {
+                    case 0: *reg += imm; break;          // ADD
+                    case 1: *reg |= imm; break;          // OR
+                    case 4: *reg &= imm; break;          // AND
+                    case 5: *reg -= imm; break;          // SUB
+                    case 7: {                            // CMP (juste les flags)
+                        unsigned short res = *reg - imm;
+                        set_zf(r, res == 0);
+                        set_cf(r, *reg < (unsigned short)imm);
+                        break;
+                    }
+                }
+                r->ip += 3;
+                return 0;
+            }
+            case 0xF7: { // Group 3 (MUL, DIV, NOT, NEG 16-bit)
+                unsigned char modrm = mem[pc + 1];
+                unsigned char subop = (modrm >> 3) & 7;
+                unsigned short* reg = reg16_by_index(r, modrm & 7);
+                r->ip += 2;
+
+                if (subop == 4) { // MUL AX, reg
+                    unsigned int res = (unsigned int)r->ax * (*reg);
+                    r->ax = (unsigned short)(res & 0xFFFF);
+                    r->dx = (unsigned short)(res >> 16);
+                } else if (subop == 6) { // DIV reg
+                    if (*reg != 0) {
+                        unsigned int num = (unsigned int)((r->dx << 16) | r->ax);
+                        r->ax = (unsigned short)(num / (*reg));
+                        r->dx = (unsigned short)(num % (*reg));
+                    }
+                }
+                return 0;
+            }
+
+            case 0xA4: { // MOVSB (Copie de mémoire DS:SI vers ES:DI) - Très utilisé en vidéo
+                unsigned int src = linear(r->ds, r->si);
+                unsigned int dst = linear(r->es, r->di);
+                mem[dst] = mem[src];
+                // Gestion du Direction Flag (DF) pour savoir si on avance ou recule
+                short inc = (r->flags & 0x0400) ? -1 : 1; 
+                r->si += inc; r->di += inc;
+                r->ip += 1;
+                return 0;
+            }
+
+            case 0xAC: { // LODSB (Charge DS:SI dans AL)
+                r->ax = (unsigned short)((r->ax & 0xFF00) | mem[linear(r->ds, r->si)]);
+                short inc = (r->flags & 0x0400) ? -1 : 1;
+                r->si += inc;
+                r->ip += 1;
+                return 0;
+            }
+            case 0xCD: { // Ecran de décès n°2
                 unsigned char intn = mem[pc + 1]; r->ip += 2;
                 if (intn == 0x20) { halt = true; exit_code = 0; return 0; }
                 if (intn == 0x21) return handle_int21(mem, r, halt, exit_code);
@@ -275,7 +666,7 @@ public:
                 trace_fault(r, op, intn, -20);
                 return -20;
             }
-            case 0x8E: { // MOV Sreg, r/m16 (register only)
+            /*case 0x8E: { // MOV Sreg, r/m16 (register only) sers à rien déja là
                 unsigned char modrm = mem[pc + 1];
                 unsigned char mod = (unsigned char)((modrm >> 6) & 0x3);
                 unsigned char reg = (unsigned char)((modrm >> 3) & 0x7);
@@ -288,14 +679,36 @@ public:
                 else { trace_fault(r, op, modrm, -10); return -10; }
                 r->ip += 2;
                 return 0;
-            }
-            case 0x88: { // MOV r/m8, r8 (register only)
+            }*/
+            case 0x88: { // MOV r/m8, r8 (Écriture en mémoire ou registre)
                 unsigned char modrm = mem[pc + 1];
-                if (((modrm >> 6) & 0x3) != 0x3) { trace_fault(r, op, modrm, -10); return -10; }
-                unsigned char src = (unsigned char)((modrm >> 3) & 0x7);
-                unsigned char dst = (unsigned char)(modrm & 0x7);
-                set_reg8(r, dst, get_reg8(r, src));
-                r->ip += 2;
+                unsigned short current_ip = (unsigned short)(r->ip + 2);
+                unsigned char src_val = get_reg8(r, (modrm >> 3) & 0x7);
+
+                if (((modrm >> 6) & 0x3) == 3) { // Mode registre
+                    set_reg8(r, modrm & 0x7, src_val);
+                    r->ip = current_ip;
+                } else { // Mode MÉMOIRE
+                    unsigned int addr = get_effective_address(r, modrm, mem, current_ip);
+                    mem[addr] = src_val;
+                    r->ip = current_ip;
+                }
+                return 0;
+            }
+
+            case 0x8A: { // MOV r8, r/m8 (Lecture depuis la mémoire ou registre)
+                unsigned char modrm = mem[pc + 1];
+                unsigned short current_ip = (unsigned short)(r->ip + 2);
+                unsigned char val;
+
+                if (((modrm >> 6) & 0x3) == 3) { // Mode registre
+                    val = get_reg8(r, modrm & 0x7);
+                } else { // Mode MÉMOIRE
+                    unsigned int addr = get_effective_address(r, modrm, mem, current_ip);
+                    val = mem[addr];
+                }
+                set_reg8(r, (modrm >> 3) & 0x7, val);
+                r->ip = current_ip;
                 return 0;
             }
             case 0x24: { // AND AL, imm8

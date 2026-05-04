@@ -1,7 +1,4 @@
-#!/usr/bin/env python3
-# make_ktt.py — Générateur de fichiers .KTT pour DOS64
-# Les caractères accentués sont encodés en Latin-1 (ISO 8859-1)
-# pour rester dans la plage 0-255
+# serves just the purpose to generate the Keyboard Translation Table
 
 import struct
 

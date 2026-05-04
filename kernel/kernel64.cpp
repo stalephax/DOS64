@@ -10,13 +10,13 @@
 #include "mzexe.h"
 #include "drivers/beep.h" // pour les tests de son, même remarque que pour FAT32.h
 #include "drivers/acpi.h" // pour les tests d'ACPI, même remarque que pour FAT32.h
-#include "vmouse.h"
+#include "pointer.h"
 #include "fs/vfs.h"
 #include "fs/vdrive.h"      // 1. interface abstraite
 #include "drivers/ata.h"    // 2. driver ATA
 #include "drivers/ramdrv.h" // 3. driver RAM
-#include "drivers/ata_lf.h"      // 4. adapteur ATA
-#include "drivers/ram_lf.h"      // 5. adapteur RAM
+#include "drivers/ata_lf.h" // 4. adapteur ATA
+#include "drivers/ram_lf.h" // 5. adapteur RAM
 #include "fs/FAT32.h"       // 6. filesystem (utilise DiskDrive*)
 #include "apicore/kapi.h"   // pour l'interface d'API kernel passée aux drivers
 #include "apicore/devtable.h"
@@ -31,6 +31,62 @@
 * système de mémoire avec bitmap et gestion de heap simple
 *
 *
+
+  @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@              
+  @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@%@@@@@%@@@@@%@@@@@@@%#####################%%@@@@@@        
+  @@@@%########################%%%@@@@@%##*#%@%#*#%%%#*#%@@@@@*-:::::::::::::::::::-*%@@@@@@        
+  @@@@%#######################%%@@@@@%%################%%@@#*+=:...................:=+****#%@@@     
+  @@@@%#####################%%@@@@@@%#**#%%##*#%%%#*#%@@@@%+-............................:+#@@@     
+  @@@@%#####################%@@@@%%####%#####%#####%%@@%*+=-:............................:--=*#@@@  
+  @@@@%####################%%@@@%%####%%%###%@%###%%@@@%+:......::-=============---:::...:::-+#@@@  
+  @@@@%#########%%%%%%%%%%%%@@@%###%%%%%%@@@@@@@@@%%%@@%+:......:=*%%%%%%%%%%%%%#*+=-:...:-=+#%@@@  
+  @@@@%#########%%%%%%%%%@@@%%%###%%%%%%%%%%%%@@@@@%@@@%+:...:-=*#%@@%%%@@@@@@@@@%##+=---==+*#%@@@  
+  @@@@%#########%%%%%%%%@@@@#**#%%%%%%@@%#####%@@@@@@@@%+:...:+%@@@@%#*#%@@@@@@ @@@@#*++++++*#%@@@  
+  @@@@%########%%@@@@@@@@@@@%#####%%@@@@%#####%@@@@@@@@%+:...:+%@@@%%%####%@@@@ @@@@%%%%%%%%%%@@@@  
+  @@@@%########%@@@@@@@@@@@@@%%###%%@@@@%#####%@@@@@@@@%+-::::+%@@%%%%%##*#%@@@@@@@@@@@@@@@@@@@     
+  @@@@%########%@@@@@@@@@@@@%###%%%%%@@@%#####%@@@@@@@@%#+=-::+%@@@@%#*##%%@@@@@@@@@@@@@@@@@@@@     
+  @@@@%########%@@@@    @@@@%###%%%%%@@@%#####%@@@@ @@@@%#*+==*%@@@%%####%%@@@%#####%%@@@@@@        
+  @@@@%########%@@@@    @@@@@%%#*##%@@@@%#####%@@@@  @@@@@%#**#@@@%%%%%##*#%@%*-:::=*%@@@@@@        
+  @@@@%########%@@@@    @@@@%#####%%%@@@%#####%@@@@    @@@@%%%%@@@@%%%####%@@%+:...:=+****#%@@@     
+  @@@@%########%@@@@    @@@@%*##%%%%%@@@%#####%@@@@       @@@@@@@@@@%#*#%%@@@%+::::......:+#@@@     
+  @@@@%########%@@@@    @@@@%%####%%@@@@%#####%@@@@       @@@@@@@@%%%%%###%@@%*=--:......:-=+*#@@@  
+  @@@@%########%@@@@    @@@@@%%###%@@@@@%#####%@@@@     @@@@@@@@@@%%%%%##*#%@@%#*=-:::......:+#@@@  
+  @@@@%########%@@@@    @@@@%###%%@@@@@@%#####%@@@@    @@@@@@@@@@@@@%#*##%%@@@@@%#+=-:......:+#@@@  
+  @@@@%########%@@@@    @@@@%####%@@@@@%%#####%@@@@ @@@%#########%@@%%#%%@@@@@@@@%#*=-......:+#@@@  
+  @@@@%########%@@@@       @@@@#*#%@@%######%%@@@@@ @@@%+:......:+%@@@@@@@@@    @@@%*-......:+#@@@  
+  @@@@%########%@@@@@@@@@@@@@@@@%%%%%#####%%%@@@@@@@@@@%*=--:...:-=+#%@@@@@@@@@@%*+=-:......:+#@@@  
+  @@@@%########%@@@@@@@@@@@@@@@@@@%######%%@@@@@@@@@@@@%#*+=:......:=*@@@@@@@@@@#+:......::::+#@@@  
+  @@@@%##################################%%@@@@@@%###%@%#*+=:......::-==========-::......:-=+*%@@@  
+  @@@@%################################%%%@@@@@%%####%@%#*+=--::......................::--=+*#%@@@  
+  @@@@%##############################%@@@@@@@@%#*##%@@@%#*++++-:......................:-=+++*#%@@@  
+  @@@@%#############################%%@@@@@%%#######%%@@%##**++=-----:.............::-==++++*#%@@@  
+  @@@@%###########################%%%@@@@@%%#*#%%%#*##%@@@@%****++++=-::::::::::::::=++++****#%@@@  
+  @@@@%####%%%%%%%%%%%%%%%%%%%%%%%%%%@@@@%%%%%%%%%%%%%%%@@@@%%#*+++++===============+++++*##%%@@@@  
+  @@@@%##%%%%%%%%%%%%%%%%%%%%%%%%%%%@@@@@%%%%@%%%%%@@%%%%@@@@@%#***++++++++++++++++******#%@@@@     
+  @@@@@%%%%%%%%%%%%%%%%%%%%%%%%%%%@@@@@@@@@%%%%%@%%%%%@@%%%%@@@@%#*++++++++++++++++*#%@@@@@@@@      
+  @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@%@@@@@%@@@@@%@@@@@@@%##################%@@@@@@@        
+     @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@              
+     @@@@@@@@@@@@@@@@@@@@@@@%#************##%@@@@@@@@@@@@@@@@@@@@%#****%@@@@@@@@@@@@@@              
+                      @@@@@%*==============*#@@@@@          @@@@%#+====*%@@@                        
+                     @@@%#*++==============+++#%@@@       @@@@%**+=====*%@@@                        
+                     @@@%*=====+********+=====*%@@@       @@@@#+=======*%@@@                        
+                     @@@%*====+#%@@@@@@%#+====*%@@@       @@@@#+=======*%@@@                        
+                 @@@@%%#*+=++*#%@@@@@@@@%#****%@@@@    @@@@%##*+=======*%@@@                        
+                 @@@@#*====+#@@@@@@@@@@@@@@@@@@@@@@    @@@%#+==========*%@@@                        
+                 @@@@#*====+#@@%********%@@@@@@@@@@ @@@%#**+==*##*+====*%@@@                        
+                 @@@@#+====+#%#*+======+*#@@@@@     @@@%*+===+*%@#+====*%@@@                        
+                 @@@@#+=====++++========++*#%@@@    @@@%*+===+*%@#+====*%@@@                        
+                 @@@@#+=======++*****+=====+*#%%@@@@@%##*==+**%@@#+====*%@@@                        
+                 @@@@#+=======+#@@@@@#+=======*%@@@@%#+===+#%@@@@#+====*%@@@                        
+                 @@@@#+====++*#%@@@@@%#**+====*%@@%#*+=+**#%@@@@@#+====*%@@@                        
+                  @@@#*====+#@@@@   @@@@#+====*%@%*+===+#%@@@@@@%#+====*#@@@@@                      
+                 @@@@%#*++=+#@@@@   @@@@#+=++*#%@%#*++==+********+=====++*#%@@@                     
+                 @@@@@%%#*+*#@@@@@@@@@@%#*+**#%@@@%#**+++++++++++=====++++*%@@@                     
+                   @@@@@%%####%%@@@@@%%#######%@@@%####**********++=+*****#%@@@                     
+                     @@@@%%%###%%%%%%%######%%%@@@%%%%%%%%%%%%%%%#*+**##%%%@@@@                     
+                        @@@@%##############%@@@@@@@@@@@@@@@@@@@@@%%####%@@@@                        
+                        @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@                        
+                       @@@@@@@@@@@@@@@@@@@@@@@@              @@@@@@@@@@@@@@@                        
 */
 
 
@@ -92,6 +148,24 @@ DeviceTable* devtable;
 
 // Fonctions wrapper pour la KernelAPI
 static int mz_host_bios_int(unsigned char intn, RealModeRegs* r, void* ctx) {
+    if (intn == 0x10) { // Interruption Vidéo BIOS
+        unsigned char ah = (unsigned char)(r->ax >> 8);
+        unsigned char al = (unsigned char)(r->ax & 0xFF);
+
+        // AH=00h : Set Video Mode
+        if (ah == 0x00) {
+            if (al == 0x13) { // Mode 320x200 256c
+                vga = ensure_vga();
+                vga->init(); // Active le mode 13h via les ports I/O
+                return 0;
+            }
+            if (al == 0x03) { // Retour au mode Texte
+                vga = ensure_vga();
+                vga->text_mode();
+                return 0;
+            }
+        }
+    }
     (void)ctx;
     if (!r) return -1;
 
@@ -119,6 +193,16 @@ static int mz_host_bios_int(unsigned char intn, RealModeRegs* r, void* ctx) {
     if (intn == 0x16 || intn == 0x1A) return 0;
 
     return -1;
+}
+
+static void mz_host_port_out(unsigned short port, unsigned char val, void* ctx) {
+    (void)ctx;
+    outb(port, val); 
+}
+
+static unsigned char mz_host_port_in(unsigned short port, void* ctx) {
+    (void)ctx;
+    return inb(port);
 }
 
 static void mz_host_putc(char c, void* ctx) {
@@ -203,7 +287,7 @@ void print(const char* str, int line = 0, unsigned char color = 0x0F) {
 
 void mount_ata(); // déclaration de la fonction d'initialisation du disque, définie plus bas, pour éviter les problèmes d'ordre d'initialisation des objets globaux
 
-void delay (const int d) // delai décimal simple
+void delay (/* ha ah, essaye de m'attrapper compileur de merde !*/ const long long d) // delai décimal simple
 {
     for (volatile int c = 0; c < d ; c++ )  ; // ne fait rien entre ces deux
 }
@@ -242,24 +326,24 @@ void init(unsigned long long mb_addr) {
     print("DOS64 Boot Sequence", 0, t_color(LIGHT_CYAN));
     print("--------------------", 1, t_color(GRAY));
     power = true;
-
+    delay(6543458U);
     // --------------------------------------------------------
     // PHASE 1 : Terminal (requis pour afficher quoi que ce soit après)
     // --------------------------------------------------------
     term = new (term_buf) Terminal;
-    init_status("Terminal        [ OK ]", 2, true);
+    init_status("Terminal                  [ OK ]", 2, true);
 
     // --------------------------------------------------------
     // PHASE 2 : Clavier
     // --------------------------------------------------------
     kbd = new (kbd_buf) Keyboard;
-    init_status("Keyboard        [ OK ]", 3, true);
+    init_status("Keyboard                  [ OK ]", 3, true);
 
     // --------------------------------------------------------
     // PHASE 3 : Mémoire physique
     // --------------------------------------------------------
     if (mb_addr == 0 || mb_addr > 0x3FFFFFFF) {
-        init_status("Memory          [FAIL] bad mb_addr", 4, false);
+        init_status("Memory                [FAIL] bad mb_addr", 4, false);
         asm volatile("cli; hlt");
     }
     mm = new (mm_buf) MemorySystem;
@@ -267,11 +351,11 @@ void init(unsigned long long mb_addr) {
 
     // Vérifier le flag mmap (bit 6)
     if (!(mb->flags & (1 << 6))) {
-        init_status("Memory          [FAIL] no mmap", 4, false);
+        init_status("Memory                [FAIL] no mmap", 4, false);
         asm volatile("cli; hlt");
     }
     mm->init(mb, (unsigned long long)_kernel_end);
-    init_status("Memory          [ OK ]", 4, true);
+    init_status("Memory                    [ OK ]", 4, true);
     init_debug(mm->get_free_mb(), 4, 50);
 
     // --------------------------------------------------------
@@ -280,7 +364,7 @@ void init(unsigned long long mb_addr) {
     heap = new (heap_buf) HeapAllocator;
     unsigned long long heap_start = ((unsigned long long)_kernel_end + 4095) & ~4095;
     heap->init(heap_start, 4 * 1024 * 1024);
-    init_status("Heap            [ OK ]", 5, true);
+    init_status("Heap                      [ OK ]", 5, true);
     init_debug(heap_start, 5, 50);
 
     // --------------------------------------------------------
@@ -288,7 +372,7 @@ void init(unsigned long long mb_addr) {
     // --------------------------------------------------------
     idt = new (idt_buf) IDT;
     idt->init();
-    init_status("IDT             [ OK ]", 6, true);
+    init_status("IDT                       [ OK ]", 6, true);
 
     // --------------------------------------------------------
     // PHASE 6 : ELF64 Loader
@@ -297,21 +381,22 @@ void init(unsigned long long mb_addr) {
     mz_exe = new (mz_buf) MZExeLoader(heap);
     mz_exe->bind_host_console(mz_host_putc, nullptr);
     mz_exe->bind_host_bios(mz_host_bios_int, nullptr);
-    init_status("ELF64 Loader    [ OK ]", 7, true);
+    mz_exe->bind_host_ports(mz_host_port_in, mz_host_port_out, nullptr);
+    init_status("ELF64/MS-DOS Executive    [ OK ]", 7, true);
 
     // --------------------------------------------------------
     // PHASE 7 : ACPI (requis pour shutdown/reboot)
     // --------------------------------------------------------
     acpi = new (acpi_buf) ACPI;
     acpi->init();
-    init_status("ACPI            [ OK ]", 8, true);
+    init_status("ACPI                      [ OK ]", 8, true);
 
     // --------------------------------------------------------
     // PHASE 8 : Souris + curseur
     // --------------------------------------------------------
     mouse = new (mouse_buf) PS2Mouse;
     bool mouse_ok = mouse->init();
-    init_status("PS2 Mouse       [ OK ]", 9, mouse_ok);
+    init_status("PS2 Mouse                 [ OK ]", 9, mouse_ok);
     cursor = new (cursor_buf) MouseCursor;
 
     // --------------------------------------------------------
@@ -319,7 +404,7 @@ void init(unsigned long long mb_addr) {
     // --------------------------------------------------------
     pm = new (path_buf) PathManager;
     pm->init();
-    init_status("Path Manager    [ OK ]", 10, true);
+    init_status("Path Manager              [ OK ]", 10, true);
 
     // --------------------------------------------------------
     // PHASE 10 : RAM disk A:
@@ -344,6 +429,10 @@ void init(unsigned long long mb_addr) {
         init_status("RAM Disk A:     [FAIL] init", 11, false);
         ramfs = nullptr;
     }
+
+
+    // NOUVEAU : On branche les ports I/O
+    
 
     // --------------------------------------------------------
     // PHASE 11 : Disque ATA + FAT32 C:
@@ -402,7 +491,7 @@ void mount_ata() {
     // Vérifier l'allocation avant tout
     // Quand le driver n'est pas crée, il fait cet écran d'erreur classique
     if (!ata) {
-        kernel_panic("ATA Driver alloc failed", 0x001);
+        fuckup("ATA Driver alloc failed", 0x001);
         return;
     }
     term->println("driver Object Created");
@@ -1105,7 +1194,7 @@ static void cmd_run(const char* path) {
         case -1:   term->println("ERR: not a valid ELF file."); break;
         case -2:   term->println("ERR: not an executable ELF."); break;
         case -3:   term->println("ERR: not x86_64 architecture."); break;
-        case 67:   term->println("ERR: the software manufacturer found this joke funny."); break;
+        case 67:   term->println("ERR: the software manufacturer found this joke funny. SIX-SEVEEEN ;)"); break;
         default: {
             char ret[16];
             ulltoa((unsigned long long)code, ret);
@@ -1307,10 +1396,10 @@ void interpret_command(const char* cmd) {
     else if (strcmp(cmd, "clear") == 0)             cmd_clear();
     else if (strcmp(cmd, "mem") == 0)               cmd_mem();
     else if (strcmp(cmd, "keymap") == 0)            cmd_keymap(nullptr);
-    else if (strncmp(cmd, "keymap ", 7) == 0)    cmd_keymap(cmd + 7);
+    else if (strncmp(cmd, "keymap ", 7) == 0)       cmd_keymap(cmd + 7);
     else if (strncmp(cmd, "echo ", 5) == 0)         cmd_echo(cmd + 5);
     else if (strcmp(cmd, "shutup") == 0)            cmd_shutdown('s');
-    else if (strncmp(cmd, "shutup r", 8) == 0)      cmd_shutdown('r');
+    else if (strncmp(cmd, "shutup -r", 8) == 0)      cmd_shutdown('r');
     else if (strcmp(cmd, "reboot") == 0)            cmd_shutdown('r');
 
     // --- Filesystem ---
@@ -1327,13 +1416,13 @@ void interpret_command(const char* cmd) {
     else if (strcmp(cmd, "dvcmgr") == 0)            cmd_dvcmgr(nullptr);
     else if (strncmp(cmd, "dvcmgr ", 7) == 0)       cmd_dvcmgr(cmd + 7);
     // Dans le dispatch :
-    else if (strncmp(cmd, "rename ", 7) == 0)   cmd_rename(cmd + 7);
-    else if (strncmp(cmd, "del ", 4) == 0)      cmd_del(cmd + 4);
+    else if (strncmp(cmd, "rename ", 7) == 0)       cmd_rename(cmd + 7);
+    else if (strncmp(cmd, "del ", 4) == 0)          cmd_del(cmd + 4);
     //else if (strncmp(cmd, "xcopy ", 5) == 0)     cmd_xcopy(cmd + 5); unused
     // --- Debug ---
     else if (strcmp(cmd, "laxative") == 0)          cmd_laxative();
     else if (strncmp(cmd, "wraw ", 5) == 0)         cmd_wraw(cmd + 5);
-    else if (strcmp(cmd, "fkup") == 0)              kernel_panic("DEBUG TESTING", 0x0);
+    else if (strcmp(cmd, "fkup") == 0)              fuckup("DEBUG TESTING", 0x0);
     else if (strcmp(cmd, "gfx") == 0)               cmd_gfx();
 
     // --- Inconnu ---

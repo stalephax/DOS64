@@ -275,7 +275,6 @@ extern "C" int driver_entry(KernelAPI* api) {
 
     api->println("[NETWIRE] Loading Ethernet driver...");
 
-    // Placement new — pas de new dynamique en bare metal
     nic = new (nic_buf) EthernetNIC;
 
     unsigned long long bar0 = 0xFEBC0000;  // QEMU E1000 BAR0
