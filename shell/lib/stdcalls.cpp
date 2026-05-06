@@ -26,7 +26,7 @@ void free(void* ptr) {
         :: "r"(ptr) : "rax", "rdi");
 }
 
-void exit(int code) {
+void kms(int code) {
     asm volatile(
         "mov $4, %%rax\nmov %0, %%rdi\nint $0x80"
         :: "r"((long long)code) : "rax", "rdi");

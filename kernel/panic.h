@@ -31,7 +31,7 @@ static unsigned long long read_rip() { unsigned long long v; asm volatile("lea (
 
 __attribute__((noreturn))
 static void fuckup(const char* reason, unsigned long long code = 0) {
-    Beeper* beep; // indiquateur sonore
+    //Beeper* beep; // indiquateur sonore
     
     asm volatile(
         "mov $0x00110000, %%rsp\n"  // adresse fixe sous le kernel
@@ -43,7 +43,7 @@ static void fuckup(const char* reason, unsigned long long code = 0) {
         PANIC_VGA[i] = 0x4F20;  // rouge + espace
 
     // Titre
-    panic_print("*** DOS64 KERNEL PANIC ***", 0);
+    panic_print("***            DOS64            ***", 0);
     panic_print("your computer fcked up and has to stop what it was doing.", 1);
     panic_print(reason, 2);
 
@@ -61,7 +61,7 @@ static void fuckup(const char* reason, unsigned long long code = 0) {
     panic_print("RIP:", 10); panic_printhex(read_rip(), 10, 5); // instruction pointer
 
     panic_print("--- SYSTEM HALTED --- Please reboot with that power button", 12);
-    beep->beep(code, 4017717247);
+    //beep->beep(code, 4017717247);
     // Halt
     asm volatile("cli; hlt");
     while(true) {}

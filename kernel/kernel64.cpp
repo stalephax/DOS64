@@ -86,7 +86,7 @@
                      @@@@%%%###%%%%%%%######%%%@@@%%%%%%%%%%%%%%%#*+**##%%%@@@@                     
                         @@@@%##############%@@@@@@@@@@@@@@@@@@@@@%%####%@@@@                        
                         @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@                        
-                       @@@@@@@@@@@@@@@@@@@@@@@@              @@@@@@@@@@@@@@@                        
+                        @@@@@@@@@@@@@@@@@@@@@@@@              @@@@@@@@@@@@@@@                        
 */
 
 
@@ -605,6 +605,9 @@ static bool resolve_runnable_path(const char* in_path, bool prefer_sys, char* ou
     }
     return false;
 }
+
+ 
+
 // la méthode d'avant est éclatée au sous-sol, celle la sera mieux pas de crash
 static int run_resolved_path(const char* path, bool is_driver = false) {
     if (!path || !path[0]) return -100;
@@ -639,7 +642,7 @@ static int run_resolved_path(const char* path, bool is_driver = false) {
         term->println("ELF magic OK");
     else
         term->println("NOT an ELF!");
-
+    
     int code;
     if (is_driver) {
         term->println("Calling load_and_call_driver...");
@@ -654,7 +657,7 @@ static int run_resolved_path(const char* path, bool is_driver = false) {
         if (code == 0) {
             term->println("16-bit image loaded + relocations applied.");
             int dos_exit = 0;
-            code = mz_exe->execute_real_mode_stub(rm_mem, &regs, 200000, &dos_exit);
+            code = mz_exe->execute_real_mode_stub(rm_mem, &regs, 50000000, &dos_exit); // le budget des cycles doit augmenter
             if (code == 0) {
                 current_program.running = false;
                 current_program.exit_code = dos_exit;
@@ -679,7 +682,7 @@ static int run_resolved_path(const char* path, bool is_driver = false) {
     } else {
         code = elf_64->load_and_run(buf, f.file_size);
     }
-
+    
     heap->free(buf);
     return code;
 }

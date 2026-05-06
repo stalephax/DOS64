@@ -774,31 +774,59 @@ bool remove(const char* path) {
     }
 }
 
-    // Lire le contenu d'un fichier en entier
+    // Lire le contenu d'un fichier à partir de sa position actuelle (f->position)
     bool read_file(FAT32_File* f, void* buffer, unsigned int max_size) {
         if (!f->valid || !mounted) return false;
 
-        unsigned char* buf  = (unsigned char*)buffer;
-        unsigned int   read = 0;
-        unsigned int   cluster = f->cluster;
+        unsigned char* buf = (unsigned char*)buffer;
+        unsigned int bytes_to_read = max_size;
+        
+        // Sécurité : Ne pas lire au-delà de la fin réelle du fichier
+        if (f->position + bytes_to_read > f->file_size) {
+            if (f->position >= f->file_size) return true; // Rien à lire, fin de fichier atteinte
+            bytes_to_read = f->file_size - f->position;
+        }
 
-        while (cluster < 0x0FFFFFF8 && read < f->file_size && read < max_size) {
+        unsigned int cluster = f->cluster;
+        unsigned int current_offset = 0; // Position absolue parcourue dans le fichier
+        unsigned int bytes_copied = 0;
+        unsigned int cluster_size = bpb.sectors_per_cluster * 512;
+
+        // 1. Sauter rapidement les clusters complets situés avant f->position
+        while (cluster < 0x0FFFFFF8 && current_offset + cluster_size <= f->position) {
+            current_offset += cluster_size;
+            cluster = fat_next(cluster);
+        }
+
+        // 2. Parcourir et copier uniquement la fenêtre demandée [f->position, f->position + bytes_to_read]
+        while (cluster < 0x0FFFFFF8 && bytes_copied < bytes_to_read) {
             unsigned int lba = cluster_to_lba(cluster);
 
-            for (int s = 0; s < bpb.sectors_per_cluster && read < f->file_size; s++) {
-                if (!read_sector(lba + s)) return false;
+            for (int s = 0; s < bpb.sectors_per_cluster && bytes_copied < bytes_to_read; s++) {
+                unsigned int sector_start = current_offset;
+                unsigned int sector_end = current_offset + 512;
 
-                unsigned int to_copy = 512;
-                if (read + to_copy > f->file_size) to_copy = f->file_size - read;
-                if (read + to_copy > max_size)     to_copy = max_size - read;
+                // Est-ce que ce secteur intersecte la zone mémoire demandée ?
+                if (f->position < sector_end && (f->position + bytes_to_read) > sector_start) {
+                    if (!read_sector(lba + s)) return false;
 
-                memcpy(buf + read, sector_buf, to_copy);
-                read += to_copy;
+                    // Calculer les offsets de découpe à l'intérieur du secteur de 512 octets
+                    unsigned int start_in_sector = (f->position > sector_start) ? (f->position - sector_start) : 0;
+                    unsigned int end_in_sector = ((f->position + bytes_to_read) < sector_end) ? ((f->position + bytes_to_read) - sector_start) : 512;
+                    unsigned int chunk_size = end_in_sector - start_in_sector;
+
+                    memcpy(buf + bytes_copied, sector_buf + start_in_sector, chunk_size);
+                    bytes_copied += chunk_size;
+                }
+
+                current_offset += 512;
             }
             cluster = fat_next(cluster);
         }
+
         return true;
     }
+    
     // Vérifie si un chemin est un répertoire
     bool is_directory(const char* path) {
     if (!mounted) return false;
