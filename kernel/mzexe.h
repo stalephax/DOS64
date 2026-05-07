@@ -248,13 +248,13 @@ public:
   0x03  (  8085 fois) /
   0x02  (  7853 fois) /
   0x7E  (  6840 fois) 
-  0x0E  (  6335 fois)
+  0x0E  (  6335 fois) 
   0x50  (  6270 fois)
   0x15  (  6072 fois)
   0x89  (  6038 fois)
   0x14  (  6012 fois)
   0x08  (  5785 fois)
-  0x04  (  5683 fois)
+  0x04  (  5683 fois) /
   0x56  (  5671 fois)
   0x76  (  5549 fois)
   0x0A  (  5497 fois)
@@ -268,7 +268,7 @@ public:
   0x74  (  4818 fois)
   0xDD  (  4791 fois)
   0x20  (  4767 fois)
-  0x05  (  4705 fois)
+  0x05  (  4705 fois) /
   0x0C  (  4659 fois)
   0x17  (  4659 fois)
   0x9A  (  4635 fois)
