@@ -659,16 +659,7 @@ public:
                 return 0;
             }
 
-            case 0x0C: { // OR AL, imm8
-                unsigned char imm = mem[pc + 1];
-                unsigned char al  = (unsigned char)(r->ax & 0xFF);
-                al |= imm;
-                set_reg8(r, 0, al);
-                set_zf(r, al == 0);
-                r->flags &= ~0x0001;  // clear CF
-                r->ip += 2;
-                return 0;
-            }
+
 
             case 0x0D: { // OR AX, imm16
                 unsigned short imm = read_mem16(mem, linear(r->cs, r->ip + 1));
@@ -679,20 +670,9 @@ public:
                 return 0;
             }
 
-            case 0x17: { // POP SS
-                r->ss = read_mem16(mem, linear(r->ss, r->sp));
-                r->sp += 2;
-                r->ip += 1;
-                return 0;
-            }
+
 
             case 0x0F: // déjà présent — mais ajoute 0x07 et 0x1F si pas là
-            case 0x07: { // POP ES
-                r->es = read_mem16(mem, linear(r->ss, r->sp));
-                r->sp += 2;
-                r->ip += 1;
-                return 0;
-            }
 
             case 0x1F: { // POP DS
                 r->ds = read_mem16(mem, linear(r->ss, r->sp));
@@ -952,23 +932,7 @@ public:
                 else          { r->ip += 4; }      // forme mémoire = environ 4 octets
                 return 0;
             }
-            case 0x06: { // PUSH ES
-                r->sp -= 2;
-                write_mem16(mem, linear(r->ss, r->sp), r->es);
-                r->ip += 1; return 0;
-            }
-
-            case 0x0E: { // PUSH CS
-                r->sp -= 2;
-                write_mem16(mem, linear(r->ss, r->sp), r->cs);
-                r->ip += 1; return 0;
-            }
-
-            case 0x16: { // PUSH SS
-                r->sp -= 2;
-                write_mem16(mem, linear(r->ss, r->sp), r->ss);
-                r->ip += 1; return 0;
-            }
+            
 
             case 0x1E: { // PUSH DS
                 r->sp -= 2;
