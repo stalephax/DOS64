@@ -468,6 +468,96 @@ public:
         // les instructions sont ICI
         switch (op) {
             // ne toucher à rien ici ou je vous égorge
+            case 0x00: { // ADD r/m8, r8
+                unsigned char modrm = mem[pc + 1];
+                unsigned short ip_off = r->ip + 2;
+                unsigned char src = get_reg8(r, (modrm >> 3) & 7);
+                if (((modrm >> 6) & 3) == 3) {
+                    unsigned char dst = get_reg8(r, modrm & 7);
+                    unsigned short result = (unsigned short)dst + src;
+                    set_reg8(r, modrm & 7, (unsigned char)result);
+                    set_zf(r, ((unsigned char)result) == 0);
+                    set_cf(r, result > 0xFF);
+                } else {
+                    unsigned int addr = get_effective_address(r, modrm, mem, ip_off);
+                    unsigned char dst = mem[addr];
+                    unsigned short result = (unsigned short)dst + src;
+                    write_mem8(mem, addr, (unsigned char)result);
+                    set_zf(r, ((unsigned char)result) == 0);
+                    set_cf(r, result > 0xFF);
+                }
+                r->ip = ip_off;
+                return 0;
+            }
+            case 0x01: { // ADD r/m16, r16
+                unsigned char modrm = mem[pc + 1];
+                unsigned short ip_off = r->ip + 2;
+                unsigned short src = *reg16_by_index(r, (modrm >> 3) & 7);
+                unsigned short dst = read_rm16(r, modrm, mem, ip_off);
+                unsigned int result = (unsigned int)dst + src;
+                ip_off = r->ip + 2;
+                write_rm16(r, modrm, mem, ip_off, (unsigned short)result);
+                set_zf(r, ((unsigned short)result) == 0);
+                set_cf(r, result > 0xFFFF);
+                r->ip = ip_off;
+                return 0;
+            }
+            case 0x06: push16(mem, r, r->es); r->ip += 1; return 0;
+            case 0x07: r->es = pop16(mem, r); r->ip += 1; return 0;
+            case 0x08: { // OR r/m8, r8
+                unsigned char modrm = mem[pc + 1];
+                unsigned short ip_off = r->ip + 2;
+                unsigned char src = get_reg8(r, (modrm >> 3) & 7);
+                unsigned char res;
+                if (((modrm >> 6) & 3) == 3) {
+                    res = (unsigned char)(get_reg8(r, modrm & 7) | src);
+                    set_reg8(r, modrm & 7, res);
+                } else {
+                    unsigned int addr = get_effective_address(r, modrm, mem, ip_off);
+                    res = (unsigned char)(mem[addr] | src);
+                    write_mem8(mem, addr, res);
+                }
+                set_zf(r, res == 0);
+                set_cf(r, false);
+                r->ip = ip_off;
+                return 0;
+            }
+            case 0x0A: { // OR r8, r/m8
+                unsigned char modrm = mem[pc + 1];
+                unsigned short ip_off = r->ip + 2;
+                unsigned char src = (((modrm >> 6) & 3) == 3) ? get_reg8(r, modrm & 7) : mem[get_effective_address(r, modrm, mem, ip_off)];
+                unsigned char res = (unsigned char)(get_reg8(r, (modrm >> 3) & 7) | src);
+                set_reg8(r, (modrm >> 3) & 7, res);
+                set_zf(r, res == 0); set_cf(r, false); r->ip = ip_off; return 0;
+            }
+            case 0x0B: { // OR r16, r/m16
+                unsigned char modrm = mem[pc + 1];
+                unsigned short ip_off = r->ip + 2;
+                unsigned short val = read_rm16(r, modrm, mem, ip_off);
+                unsigned short* dst = reg16_by_index(r, (modrm >> 3) & 7);
+                *dst = (unsigned short)(*dst | val);
+                set_zf(r, *dst == 0); set_cf(r, false); r->ip = ip_off; return 0;
+            }
+            case 0x0C: { unsigned char res = (unsigned char)((r->ax & 0xFF) | mem[pc + 1]); set_reg8(r, 0, res); set_zf(r, res == 0); set_cf(r, false); r->ip += 2; return 0; }
+            case 0x0E: push16(mem, r, r->cs); r->ip += 1; return 0;
+            case 0x16: push16(mem, r, r->ss); r->ip += 1; return 0;
+            case 0x17: r->ss = pop16(mem, r); r->ip += 1; return 0;
+            case 0x20: { // AND r/m8, r8
+                unsigned char modrm = mem[pc + 1];
+                unsigned short ip_off = r->ip + 2;
+                unsigned char src = get_reg8(r, (modrm >> 3) & 7);
+                if (((modrm >> 6) & 3) == 3) {
+                    unsigned char res = (unsigned char)(get_reg8(r, modrm & 7) & src);
+                    set_reg8(r, modrm & 7, res);
+                    set_zf(r, res == 0);
+                } else {
+                    unsigned int addr = get_effective_address(r, modrm, mem, ip_off);
+                    unsigned char res = (unsigned char)(mem[addr] & src);
+                    write_mem8(mem, addr, res);
+                    set_zf(r, res == 0);
+                }
+                set_cf(r, false); r->ip = ip_off; return 0;
+            }
             case 0x3D: { // OPEN FILE
                 unsigned int p = linear(r->ds, r->dx);
                 const char* filename = (const char*)&mem[p];
