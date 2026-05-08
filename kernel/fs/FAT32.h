@@ -780,52 +780,43 @@ bool remove(const char* path) {
 
         unsigned char* buf = (unsigned char*)buffer;
         unsigned int bytes_to_read = max_size;
-        
-        // Sécurité : Ne pas lire au-delà de la fin réelle du fichier
+
         if (f->position + bytes_to_read > f->file_size) {
-            if (f->position >= f->file_size) return true; // Rien à lire, fin de fichier atteinte
+            if (f->position >= f->file_size) return true; // EOF
             bytes_to_read = f->file_size - f->position;
         }
 
         unsigned int cluster = f->cluster;
-        unsigned int current_offset = 0; // Position absolue parcourue dans le fichier
-        unsigned int bytes_copied = 0;
         unsigned int cluster_size = bpb.sectors_per_cluster * 512;
+        unsigned int bytes_copied = 0;
+        unsigned int skip_bytes = f->position % cluster_size;
 
-        // 1. Sauter rapidement les clusters complets situés avant f->position
-        while (cluster < 0x0FFFFFF8 && current_offset + cluster_size <= f->position) {
-            current_offset += cluster_size;
+        for (unsigned int i = 0; i < f->position / cluster_size; i++) {
             cluster = fat_next(cluster);
+            if (cluster >= 0x0FFFFFF8) return false;
         }
 
-        // 2. Parcourir et copier uniquement la fenêtre demandée [f->position, f->position + bytes_to_read]
         while (cluster < 0x0FFFFFF8 && bytes_copied < bytes_to_read) {
             unsigned int lba = cluster_to_lba(cluster);
-
             for (int s = 0; s < bpb.sectors_per_cluster && bytes_copied < bytes_to_read; s++) {
-                unsigned int sector_start = current_offset;
-                unsigned int sector_end = current_offset + 512;
-
-                // Est-ce que ce secteur intersecte la zone mémoire demandée ?
-                if (f->position < sector_end && (f->position + bytes_to_read) > sector_start) {
-                    if (!read_sector(lba + s)) return false;
-
-                    // Calculer les offsets de découpe à l'intérieur du secteur de 512 octets
-                    unsigned int start_in_sector = (f->position > sector_start) ? (f->position - sector_start) : 0;
-                    unsigned int end_in_sector = ((f->position + bytes_to_read) < sector_end) ? ((f->position + bytes_to_read) - sector_start) : 512;
-                    unsigned int chunk_size = end_in_sector - start_in_sector;
-
-                    memcpy(buf + bytes_copied, sector_buf + start_in_sector, chunk_size);
-                    bytes_copied += chunk_size;
-                }
-
-                current_offset += 512;
+                if (!read_sector(lba + s)) return false;
+                
+                unsigned int start = skip_bytes;
+                unsigned int end = 512;
+                if (start >= 512) { start = 0; skip_bytes = 0; continue; }
+                if (end > bytes_to_read - bytes_copied) end = bytes_to_read - bytes_copied;
+                
+                memcpy(buf + bytes_copied, sector_buf + start, end - start);
+                bytes_copied += (end - start);
+                skip_bytes = 0;
             }
             cluster = fat_next(cluster);
         }
-
+        
+        f->position += bytes_copied;
         return true;
     }
+
     
     // Vérifie si un chemin est un répertoire
     bool is_directory(const char* path) {
@@ -869,37 +860,37 @@ bool remove(const char* path) {
     
     // Lister les fichiers du répertoire racine
     void list_files(Terminal* term, const char* path = "") {
-    if (!mounted) { term->println("No filesystem mounted."); return; }
+        if (!mounted) { term->println("No filesystem mounted."); return; }
 
-    // Trouver le cluster de départ
-    unsigned int cluster = root_cluster;
+        // Trouver le cluster de départ
+        unsigned int cluster = root_cluster;
 
-    // Si un chemin est donné, naviguer jusqu'au dossier
-    if (path && path[0]) {
-        // Ignorer préfixe volume
-        if (path[1] == ':') path += 2;
-        if (*path == '/' || *path == '\\') path++;
+        // Si un chemin est donné, naviguer jusqu'au dossier
+        if (path && path[0]) {
+            // Ignorer préfixe volume
+            if (path[1] == ':') path += 2;
+            if (*path == '/' || *path == '\\') path++;
 
-        const char* remaining = path;
-        while (*remaining) {
-            char component[13];
-            const char* next;
-            next_component(remaining, component, &next);
-            if (!component[0]) break;
+            const char* remaining = path;
+            while (*remaining) {
+                char component[13];
+                const char* next;
+                next_component(remaining, component, &next);
+                if (!component[0]) break;
 
-            FAT32_DirEntry entry;
-            if (!find_in_dir(cluster, component, &entry)) {
-                term->println("Directory not found.");
-                return;
+                FAT32_DirEntry entry;
+                if (!find_in_dir(cluster, component, &entry)) {
+                    term->println("Directory not found.");
+                    return;
+                }
+                if (!(entry.attributes & FAT_ATTR_DIRECTORY)) {
+                    term->println("Not a directory.");
+                    return;
+                }
+                cluster = ((unsigned int)entry.cluster_high << 16) | entry.cluster_low;
+                remaining = next;
             }
-            if (!(entry.attributes & FAT_ATTR_DIRECTORY)) {
-                term->println("Not a directory.");
-                return;
-            }
-            cluster = ((unsigned int)entry.cluster_high << 16) | entry.cluster_low;
-            remaining = next;
         }
-    }
 
     // Lister le contenu du cluster trouvé
     // ... (même code qu'avant mais avec `cluster` au lieu de `root_cluster`)

@@ -459,6 +459,9 @@ public:
     int emulate_step(unsigned char* mem, RealModeRegs* r, bool& halt, int& exit_code) {
         unsigned int pc = linear(r->cs, r->ip);
         unsigned char op = mem[pc];
+        unsigned short original_ip = r->ip;  // Sauvegarder l'IP original
+
+        
 
         if (op >= 0x50 && op <= 0x57) { push16(mem, r, *reg16_by_index(r, op - 0x50)); r->ip += 1; return 0; }
         if (op >= 0x58 && op <= 0x5F) { *reg16_by_index(r, op - 0x58) = pop16(mem, r); r->ip += 1; return 0; }
@@ -467,8 +470,34 @@ public:
             r->ip += 3; return 0;
         }
         // les instructions sont ICI
-        switch (op) {
+        switch (op) { // in simple putain de WORD veut pas se lancer avec toutes ces modifs, fdp
             // ne toucher à rien ici ou je vous égorge
+            case 0x90:  // NOP
+            r->ip = original_ip + 1;
+            return 0;
+            
+        case 0xB8:  // MOV AX, imm16
+            r->ax = (unsigned short)(mem[pc + 1] | (mem[pc + 2] << 8));
+            r->ip = original_ip + 3;
+            return 0;
+            
+        case 0xC3:  // RET
+            r->ip = pop16(mem, r);
+            return 0;
+            
+        case 0xE8: {  // CALL rel16
+            signed short rel = (signed short)(mem[pc + 1] | (mem[pc + 2] << 8));
+            unsigned short ret_ip = original_ip + 3;
+            push16(mem, r, ret_ip);
+            r->ip = original_ip + 3 + rel;
+            return 0;
+        }
+        
+        case 0xEB: {  // JMP rel8
+            signed char rel = (signed char)mem[pc + 1];
+            r->ip = original_ip + 2 + rel;
+            return 0;
+        }
             case 0x00: { // ADD r/m8, r8
                 unsigned char modrm = mem[pc + 1];
                 unsigned short ip_off = r->ip + 2;
@@ -553,6 +582,7 @@ public:
                 unsigned char* dst = nullptr; unsigned char d = get_reg8(r, (modrm >> 3) & 7); unsigned short res = (unsigned short)d + src + ((r->flags & 1) ? 1 : 0);
                 (void)dst; set_reg8(r, (modrm >> 3) & 7, (unsigned char)res); set_zf(r, ((unsigned char)res) == 0); set_cf(r, res > 0xFF); r->ip = ip_off; return 0;
             }
+            // il manque 0xB1
             case 0x13: { // ADC r16, r/m16
                 unsigned char modrm = mem[pc + 1]; unsigned short ip_off = r->ip + 2;
                 unsigned short src = read_rm16(r, modrm, mem, ip_off); unsigned short* d = reg16_by_index(r, (modrm >> 3) & 7); unsigned int res = (unsigned int)(*d) + src + ((r->flags & 1) ? 1 : 0);
@@ -940,7 +970,6 @@ public:
                 r->ip += 1; return 0;
             }
 
-            case 0x90: r->ip += 1; return 0;
             case 0x75: { 
                 signed char rel = (signed char)mem[pc + 1];
                 bool zf = (r->flags & 0x40) != 0;
@@ -1023,14 +1052,7 @@ public:
                 r->ip += 1;
                 return 0;
             }
-            case 0xC3: r->ip = pop16(mem, r); return 0;
-            case 0xE8: {  // Ecran de sortie normal
-                signed short rel = (signed short)(mem[pc + 1] | (mem[pc + 2] << 8));
-                unsigned short ret_ip = (unsigned short)(r->ip + 3);
-                push16(mem, r, ret_ip);
-                r->ip = (unsigned short)(ret_ip + rel);
-                return 0;
-            }
+
             
             case 0xF7: { // Group 3 (MUL, DIV, NOT, NEG 16-bit)
                 unsigned char modrm = mem[pc + 1];
@@ -1396,7 +1418,6 @@ public:
                 r->ip += 3;
                 return 0;
             }
-            case 0xEB: { signed char rel = (signed char)mem[pc + 1]; r->ip = (unsigned short)(r->ip + 2 + rel); return 0; }
             case 0xC0: { // shifts group2 imm8 - only SHR r/m8,imm8 register form
                 unsigned char modrm = mem[pc + 1];
                 unsigned char imm = mem[pc + 2];

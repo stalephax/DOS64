@@ -6,31 +6,41 @@
 #include "drivers/io.h"
 #include "drivers/keyboard.h"
 #include "drivers/video.h"
+#include "pointer.h"
 #include "fs/FAT32.h"
 #include "panic.h"
 // Numéros de syscall
-#define SYS_PRINT   0
-#define SYS_PRINTLN 1
-#define SYS_MALLOC  2
-#define SYS_FREE    3
-#define SYS_EXIT    4
-#define SYS_GETCHAR 5
-#define SYS_GETLINE 6
-#define SYS_GFX_INIT     7
-#define SYS_GFX_CLEAR    8
-#define SYS_GFX_PIXEL    9
-#define SYS_FS_READ      10
-#define SYS_FS_WRITE     11
-#define SYS_GFX_TEXTMODE 12 // note : when a software using GFX mode goes back to standart SHELL mode, the text UI is completely fucked
-
+#define SYS_PRINT     0
+#define SYS_PRINTLN   1
+#define SYS_MALLOC    2
+#define SYS_FREE      3
+#define SYS_EXIT      4
+#define SYS_GETCHAR   5
+#define SYS_GETLINE   6
+#define SYS_GFX_INIT  7
+#define SYS_GFX_CLR   8
+#define SYS_GFX_PIX   9
+#define SYS_GFX_EXIT  10
+#define SYS_FS_READ   11
+#define SYS_FS_WRITE  12
+#define SYS_FS_EXISTS 15
+#define SYS_FS_SIZE   16
+#define SYS_FS_MKDIR  17
+#define SYS_FS_DEL    18
+#define SYS_GETCWD    19
+#define SYS_SETCWD    20
+#define SYS_GET_POINTER_X 21
+#define SYS_GET_POINTER_Y 22
+#define SYS_GET_POINTER_BUTTON 23
 // Objets kernel (définis dans kernel64.cpp)
 extern Terminal* term;
 extern HeapAllocator* heap;
 extern Keyboard* kbd;
 extern VGAGraphics* vga;
 extern FAT32* fs;
-extern PathManager* pm; // ça ne trouve pas ou quoi? fdp
+extern PathManager* pm; 
 extern bool power;
+extern MouseCursor* cursor;
 extern "C" VGAGraphics* ensure_vga();
 static FAT32* current_fs();
 
@@ -104,11 +114,11 @@ extern "C" void interrupt_handler_syscall(
             ensure_vga()->init();
             break;
 
-        case SYS_GFX_CLEAR:
+        case SYS_GFX_CLR:
             ensure_vga()->clear((unsigned char)arg1);
             break;
 
-        case SYS_GFX_PIXEL:
+        case SYS_GFX_PIX:
             ensure_vga()->set_pixel((int)arg1, (int)arg2, (unsigned char)arg3);
             break;
 
@@ -150,13 +160,7 @@ extern "C" void interrupt_handler_syscall(
 
         
 
-case 12:  // SYS_FS_WRITE — écrire un fichier
-{
-    // Pour l'instant : pas d'écriture partielle, on recrée le fichier
-    // (implémentation complète nécessite write FAT32)
-    asm volatile("mov $-1, %%rax" ::: "rax");
-    break;
-}
+
 
 case 15:  // SYS_FS_EXISTS
 {
@@ -169,6 +173,20 @@ case 15:  // SYS_FS_EXISTS
     break;
 }
 
+case SYS_GET_POINTER_X: 
+{
+    MouseCursor *cs = cursor;
+    int value = cs->get_x();
+    asm volatile("mov %0, %%rax" :: "r"((long long)value) : "rax");
+    break;
+}
+case SYS_GET_POINTER_Y: 
+{
+    MouseCursor *cs = cursor;
+    int value = cs->get_y();
+    asm volatile("mov %0, %%rax" :: "r"((long long)value) : "rax");
+    break;
+}
 case 19:  // SYS_GETCWD
 {
     char* buf = (char*)arg1;

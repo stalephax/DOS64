@@ -963,7 +963,8 @@ static void cmd_del(const char* path) {
         term->println("Delete failed. File may not exist or is a directory.");
     }
 }
-static void cmd_shutdown(char bootmode) {
+// makes the system actually shut up
+static void cmd_shutup(char bootmode) {
  bool reboot = (bootmode == 'r' || bootmode == 'R');
     if (reboot) {
         term->set_color(BLUE);
@@ -975,6 +976,7 @@ static void cmd_shutdown(char bootmode) {
         term->println("Shutting down...");
         delay(90000000);
         term->clear();
+        beep->beep_error();
         print("  It is now safe to turn off your computer.", 0, t_color(YELLOW));
         power = false;
         delay(90000000);
@@ -1299,6 +1301,24 @@ static void cmd_laxative() {
     }
 }
 
+static void cmd_xcopy(const char* args) {
+    if (!require_fs());
+    // parser les fichiers
+    char o[256], d[256];
+    int i = 0;
+    while (args[i] && args[i] != ' ') { o[i] = args[i]; i++; }
+    o[i] = '\0';
+    if (!args[i]) { term->println("Usage: RENAME oldname newname"); return; }
+    i++;
+    int j = 0;
+    while (args[i]) { d[j++] = args[i++]; }
+    d[j] = '\0';
+
+    char resolved[256];
+    pm->resolve(o, resolved);
+
+}
+
 static void cmd_wraw(const char* data) {
     if (!ata || !ata->is_present()) {
         term->println("No disk. Use MOUNT first.");
@@ -1400,9 +1420,9 @@ void interpret_command(const char* cmd) {
     else if (strcmp(cmd, "keymap") == 0)            cmd_keymap(nullptr);
     else if (strncmp(cmd, "keymap ", 7) == 0)       cmd_keymap(cmd + 7);
     else if (strncmp(cmd, "echo ", 5) == 0)         cmd_echo(cmd + 5);
-    else if (strcmp(cmd, "shutup") == 0)            cmd_shutdown('s');
-    else if (strncmp(cmd, "shutup -r", 8) == 0)      cmd_shutdown('r');
-    else if (strcmp(cmd, "reboot") == 0)            cmd_shutdown('r');
+    else if (strcmp(cmd, "shutup") == 0)            cmd_shutup('s');
+    else if (strncmp(cmd, "shutup -r", 8) == 0)      cmd_shutup('r');
+    else if (strcmp(cmd, "reboot") == 0)            cmd_shutup('r');
 
     // --- Filesystem ---
     else if (strncmp(cmd, "fatfs", 5) == 0)         cmd_fatfs(cmd + 5);
@@ -1420,7 +1440,7 @@ void interpret_command(const char* cmd) {
     // Dans le dispatch :
     else if (strncmp(cmd, "rename ", 7) == 0)       cmd_rename(cmd + 7);
     else if (strncmp(cmd, "del ", 4) == 0)          cmd_del(cmd + 4);
-    //else if (strncmp(cmd, "xcopy ", 5) == 0)     cmd_xcopy(cmd + 5); unused
+    else if (strncmp(cmd, "xcopy ", 5) == 0)     cmd_xcopy(cmd + 5); 
     // --- Debug ---
     else if (strcmp(cmd, "laxative") == 0)          cmd_laxative();
     else if (strncmp(cmd, "wraw ", 5) == 0)         cmd_wraw(cmd + 5);

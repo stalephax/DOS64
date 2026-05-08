@@ -1,5 +1,5 @@
 #pragma once
-
+#include "prompt.h"
 // =============================================
 // Structure multiboot memory map
 // =============================================
@@ -30,8 +30,9 @@ struct MultibootInfo {
 // Gestionnaire mémoire physique (bitmap)
 // =============================================
 class MemorySystem {
+
     static const unsigned long long PAGE_SIZE = 4096;
-    static const unsigned long long MAX_PAGES = (4ULL * 1024ULL * 1024ULL * 1024ULL) / PAGE_SIZE; // 4 Gio max
+    static const unsigned long long MAX_PAGES = (8ULL * 1024ULL * 1024ULL * 1024ULL) / PAGE_SIZE; // 4 Gio max
 
     // Bitmap : 1 bit par page (1 = libre, 0 = utilisé)
     unsigned char bitmap[MAX_PAGES / 8];
@@ -52,9 +53,41 @@ void set_free(unsigned long long page) {
     bool is_free(unsigned long long page) {
         return bitmap[page / 8] & (1 << (page % 8));
     }
-
+    struct MemoryRegion {
+        unsigned long long start;
+        unsigned long long end;
+        const char* name;
+        bool used;
+    };
+    
+    static const int MAX_REGIONS = 64;
+    MemoryRegion regions[MAX_REGIONS];
+    int region_count;
 public:
-
+/* pour que le compilateur la ferme
+    void debug_print_regions(Terminal* term) {
+        for (int i = 0; i < region_count; i++) {
+            char buf[32];
+            ulltoa(regions[i].start, buf);
+            term->print("0x"); term->print(buf);
+            term->print(" - 0x");
+            ulltoa(regions[i].end, buf);
+            term->print(buf);
+            term->print(" : ");
+            term->println(regions[i].name);
+        }
+    }
+    */
+    bool is_region_free(unsigned long long addr, unsigned long long size) {
+        for (int i = 0; i < region_count; i++) {
+            if (regions[i].used &&
+                addr < regions[i].end && 
+                (addr + size) > regions[i].start) {
+                return false;
+            }
+        }
+        return true;
+    }
     void init(MultibootInfo* mb, unsigned long long kernel_end) {
     // Tout marquer comme utilisé par défaut
     for (unsigned long long i = 0; i < MAX_PAGES / 8; i++)
@@ -143,6 +176,30 @@ public:
 
     unsigned long long get_free_mb() { return (free_pages * PAGE_SIZE) / (1024 * 1024); }
     unsigned long long get_total_mb() { return (total_pages * PAGE_SIZE) / (1024 * 1024); }
+};
+// Dans memory.h, après la classe MemorySystem
+class PageTable {
+    static const unsigned long long ENTRIES = 512;
+    unsigned long long entries[ENTRIES];
+    
+public:
+    void clear() {
+        for (int i = 0; i < ENTRIES; i++)
+            entries[i] = 0;
+    }
+    
+    void map(unsigned long long virt, unsigned long long phys, 
+             unsigned long long flags) {
+        unsigned int idx = (virt >> 12) & 0x1FF;
+        entries[idx] = phys | flags | 0x03;  // Present + RW
+    }
+    
+    void enable() {
+        asm volatile("mov %0, %%cr3" :: "r"(entries));
+        unsigned long long cr0;
+        asm volatile("mov %%cr0, %0" : "=r"(cr0));
+        asm volatile("mov %0, %%cr0" :: "r"(cr0 | 0x80000000));
+    }
 };
 
 class HeapAllocator {

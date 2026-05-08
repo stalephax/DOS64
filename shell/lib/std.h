@@ -24,6 +24,9 @@
 #define SYS_FS_DEL    18
 #define SYS_GETCWD    19
 #define SYS_SETCWD    20
+#define SYS_GET_POINTER_X 21
+#define SYS_GET_POINTER_Y 22
+#define SYS_GET_POINTER_BUTTON 23
 
 // --- Terminal ---
 void print(const char* s);
@@ -78,3 +81,6 @@ void gfx_exit();
 void gfx_line(int x1, int y1, int x2, int y2, unsigned char color);
 void gfx_rect(int x, int y, int w, int h, unsigned char color);
 void gfx_fill(int x, int y, int w, int h, unsigned char color);
+// --- MOUSE ---
+static int pointer_x();
+static int pointer_y();
