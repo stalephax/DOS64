@@ -642,7 +642,6 @@ static int run_resolved_path(const char* path, bool is_driver = false) {
         term->println("ELF magic OK");
     else
         term->println("NOT an ELF!");
-    
     int code;
     if (is_driver) {
         term->println("Calling load_and_call_driver...");
@@ -1453,6 +1452,12 @@ extern "C" void kernel_main(unsigned long long mb_addr) {
     int i_writecurpos = 0; // position d'écriture
     int input_len = 0;
 
+    // Historique de saisie : 256 caractères max
+
+    static char old_input[128][256];
+    int old_input_lengh;
+    
+
     while (power) {
         cursor->update(mouse);
 
@@ -1471,6 +1476,9 @@ extern "C" void kernel_main(unsigned long long mb_addr) {
 
             // Réinitialiser le buffer
             input_len = 0;
+            // mettre à jour l'historique
+            old_input_lengh++;
+            old_input[old_input_lengh][256] = *input;
             char prompt[32];
             pm->get_prompt(prompt);
             term->print(prompt);
@@ -1483,6 +1491,11 @@ extern "C" void kernel_main(unsigned long long mb_addr) {
                 i_writecurpos = input_len;
             }
             //term->update_cursor();
+        else if (c == '\t') { 
+            for (int c = 0; c < old_input_lengh; c++ ) {
+                term->putchar(*old_input[c]);
+            }
+        }
 
         } else {
             // Caractère normal : ajouter au buffer si pas plein

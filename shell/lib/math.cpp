@@ -4,6 +4,7 @@ long long abs(long long x)              { return x < 0 ? -x : x; }
 long long min(long long a, long long b) { return a < b ? a : b; }
 long long max(long long a, long long b) { return a > b ? a : b; }
 
+
 void itoa(long long n, char* buf) {
     if (n == 0) { buf[0]='0'; buf[1]='\0'; return; }
     bool neg = n < 0;
