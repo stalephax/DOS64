@@ -249,6 +249,7 @@ public:
   0x02  (  7853 fois) /
   0x7E  (  6840 fois) 
   0x0E  (  6335 fois) 
+  0x0E  (  6335 fois) 
   0x50  (  6270 fois)
   0x15  (  6072 fois)
   0x89  (  6038 fois)
@@ -259,7 +260,7 @@ public:
   0x76  (  5549 fois)
   0x0A  (  5497 fois)
   0x75  (  5491 fois)
-  0x13  (  5435 fois)
+  0x13  (  5435 fois) /
   0x12  (  5204 fois)
   0x10  (  5145 fois)
   0x90  (  5062 fois)
@@ -640,7 +641,76 @@ public:
                 r->ip = ip_off;
                 return 0;
             }
+            case 0xC6: { // MOV r/m8, imm8
+                unsigned char modrm  = mem[pc + 1];
+                unsigned short ip_off = r->ip + 2;
+                unsigned char imm;
 
+                if (((modrm >> 6) & 3) == 3) {
+                    imm = mem[linear(r->cs, ip_off)];
+                    set_reg8(r, modrm & 7, imm);
+                    r->ip = ip_off + 1;
+                } else {
+                    unsigned int addr = get_effective_address(r, modrm, mem, ip_off);
+                    imm = mem[linear(r->cs, ip_off)];
+                    write_mem8(mem, addr, imm);
+                    r->ip = ip_off + 1;
+                }
+                return 0;
+            }
+
+            case 0x0C: { // OR AL, imm8
+                unsigned char imm = mem[pc + 1];
+                unsigned char al  = (unsigned char)(r->ax & 0xFF);
+                al |= imm;
+                set_reg8(r, 0, al);
+                set_zf(r, al == 0);
+                r->flags &= ~0x0001;  // clear CF
+                r->ip += 2;
+                return 0;
+            }
+
+            case 0x0D: { // OR AX, imm16
+                unsigned short imm = read_mem16(mem, linear(r->cs, r->ip + 1));
+                r->ax |= imm;
+                set_zf(r, r->ax == 0);
+                r->flags &= ~0x0001;
+                r->ip += 3;
+                return 0;
+            }
+
+            case 0x17: { // POP SS
+                r->ss = read_mem16(mem, linear(r->ss, r->sp));
+                r->sp += 2;
+                r->ip += 1;
+                return 0;
+            }
+
+            case 0x0F: // déjà présent — mais ajoute 0x07 et 0x1F si pas là
+            case 0x07: { // POP ES
+                r->es = read_mem16(mem, linear(r->ss, r->sp));
+                r->sp += 2;
+                r->ip += 1;
+                return 0;
+            }
+
+            case 0x1F: { // POP DS
+                r->ds = read_mem16(mem, linear(r->ss, r->sp));
+                r->sp += 2;
+                r->ip += 1;
+                return 0;
+            }
+
+            case 0x9A: { // CALL FAR imm16:imm16
+                unsigned short new_ip = read_mem16(mem, linear(r->cs, r->ip + 1));
+                unsigned short new_cs = read_mem16(mem, linear(r->cs, r->ip + 3));
+                // Push CS puis IP de retour
+                r->sp -= 2; write_mem16(mem, linear(r->ss, r->sp), r->cs);
+                r->sp -= 2; write_mem16(mem, linear(r->ss, r->sp), (unsigned short)(r->ip + 5));
+                r->cs = new_cs;
+                r->ip = new_ip;
+                return 0;
+            }
             case 0x03: { // ADD r16, r/m16
                 unsigned char modrm = mem[pc + 1];
                 unsigned short ip_off = r->ip + 2;
@@ -815,153 +885,97 @@ public:
                 return 0;
             }
             case 0x60: { // PUSHA — push tous les registres
-    unsigned short old_sp = r->sp;
-    r->sp -= 2; write_mem16(mem, linear(r->ss, r->sp), r->ax);
-    r->sp -= 2; write_mem16(mem, linear(r->ss, r->sp), r->cx);
-    r->sp -= 2; write_mem16(mem, linear(r->ss, r->sp), r->dx);
-    r->sp -= 2; write_mem16(mem, linear(r->ss, r->sp), r->bx);
-    r->sp -= 2; write_mem16(mem, linear(r->ss, r->sp), old_sp);
-    r->sp -= 2; write_mem16(mem, linear(r->ss, r->sp), r->bp);
-    r->sp -= 2; write_mem16(mem, linear(r->ss, r->sp), r->si);
-    r->sp -= 2; write_mem16(mem, linear(r->ss, r->sp), r->di);
-    r->ip += 1; return 0;
-}
-
-case 0x61: { // POPA — pop tous les registres
-    r->di = read_mem16(mem, linear(r->ss, r->sp)); r->sp += 2;
-    r->si = read_mem16(mem, linear(r->ss, r->sp)); r->sp += 2;
-    r->bp = read_mem16(mem, linear(r->ss, r->sp)); r->sp += 2;
-    r->sp += 2;  // skip SP sauvegardé
-    r->bx = read_mem16(mem, linear(r->ss, r->sp)); r->sp += 2;
-    r->dx = read_mem16(mem, linear(r->ss, r->sp)); r->sp += 2;
-    r->cx = read_mem16(mem, linear(r->ss, r->sp)); r->sp += 2;
-    r->ax = read_mem16(mem, linear(r->ss, r->sp)); r->sp += 2;
-    r->ip += 1; return 0;
-}
-
-case 0x9A: { // CALL FAR imm16:imm16
-    unsigned short new_ip  = read_mem16(mem, linear(r->cs, r->ip + 1));
-    unsigned short new_cs  = read_mem16(mem, linear(r->cs, r->ip + 3));
-    // Push CS puis IP de retour
-    r->sp -= 2; write_mem16(mem, linear(r->ss, r->sp), r->cs);
-    r->sp -= 2; write_mem16(mem, linear(r->ss, r->sp), (unsigned short)(r->ip + 5));
-    r->cs = new_cs;
-    r->ip = new_ip;
-    return 0;
-}
-
-case 0x83: { // ADD/SUB/CMP r/m16, imm8 (signe-étendu)
-    unsigned char modrm = mem[pc + 1];
-    unsigned char subop = (modrm >> 3) & 7;
-    unsigned short ip_off = r->ip + 2;
-    unsigned short val = read_rm16(r, modrm, mem, ip_off);
-    signed char imm = (signed char)mem[linear(r->cs, ip_off)];
-    unsigned short result = val;
-    switch (subop) {
-        case 0: result = val + (unsigned short)(signed short)imm; break; // ADD
-        case 1: result = val | (unsigned short)(signed short)imm; break; // OR
-        case 2: result = val + (unsigned short)(signed short)imm; break; // ADC (simplifié)
-        case 3: result = val - (unsigned short)(signed short)imm; break; // SBB (simplifié)
-        case 4: result = val & (unsigned short)(signed short)imm; break; // AND
-        case 5: result = val - (unsigned short)(signed short)imm; break; // SUB
-        case 6: result = val ^ (unsigned short)(signed short)imm; break; // XOR
-        case 7: // CMP — pas d'écriture
-            set_zf(r, val == (unsigned short)(signed short)imm);
-            set_cf(r, val < (unsigned short)(signed short)imm);
-            r->ip = ip_off + 1;
-            return 0;
-    }
-    write_rm16(r, modrm, mem, ip_off, result);
-    set_zf(r, result == 0);
-    set_cf(r, result > 0xFFFF);
-    r->ip = ip_off + 1;
-    return 0;
-}
-
-case 0x67: { // Address size prefix (32 bit) — on ignore
-    r->ip += 1; return 0;
-}
-
-case 0xDD: { // FPU — coprocesseur flottant — on ignore
-    // Pour Word 5.0, on peut ignorer les instructions FPU
-    // et espérer qu'il n'en a pas besoin pour le rendu texte
-    unsigned char modrm = mem[pc + 1];
-    unsigned char mod = (modrm >> 6) & 3;
-    if (mod == 3) { r->ip += 2; }      // forme registre = 2 octets
-    else          { r->ip += 4; }      // forme mémoire = environ 4 octets
-    return 0;
-}
-
-case 0x0F: { // Préfixe 2 octets — instructions 286+
-    unsigned char op2 = mem[pc + 1];
-    switch (op2) {
-        case 0x84: { // JZ/JE rel16
-            signed short rel = (signed short)read_mem16(mem, linear(r->cs, r->ip + 2));
-            bool zf = (r->flags & 0x40) != 0;
-            if (zf) r->ip = (unsigned short)(r->ip + 4 + rel);
-            else    r->ip += 4;
-            return 0;
-        }
-        case 0x85: { // JNZ/JNE rel16
-            signed short rel = (signed short)read_mem16(mem, linear(r->cs, r->ip + 2));
-            bool zf = (r->flags & 0x40) != 0;
-            if (!zf) r->ip = (unsigned short)(r->ip + 4 + rel);
-            else     r->ip += 4;
-            return 0;
-        }
-        case 0x8C: { // JL rel16
-            signed short rel = (signed short)read_mem16(mem, linear(r->cs, r->ip + 2));
-            bool sf = (r->flags & 0x80) != 0;
-            bool of = (r->flags & 0x800) != 0;
-            if (sf != of) r->ip = (unsigned short)(r->ip + 4 + rel);
-            else          r->ip += 4;
-            return 0;
-        }
-        case 0x8D: { // JGE rel16
-            signed short rel = (signed short)read_mem16(mem, linear(r->cs, r->ip + 2));
-            bool sf = (r->flags & 0x80) != 0;
-            bool of = (r->flags & 0x800) != 0;
-            if (sf == of) r->ip = (unsigned short)(r->ip + 4 + rel);
-            else          r->ip += 4;
-            return 0;
-        }
-        case 0x8E: { // JLE rel16
-            signed short rel = (signed short)read_mem16(mem, linear(r->cs, r->ip + 2));
-            bool zf = (r->flags & 0x40) != 0;
-            bool sf = (r->flags & 0x80) != 0;
-            bool of = (r->flags & 0x800) != 0;
-            if (zf || sf != of) r->ip = (unsigned short)(r->ip + 4 + rel);
-            else                r->ip += 4;
-            return 0;
-        }
-        case 0x8F: { // JG rel16
-            signed short rel = (signed short)read_mem16(mem, linear(r->cs, r->ip + 2));
-            bool zf = (r->flags & 0x40) != 0;
-            bool sf = (r->flags & 0x80) != 0;
-            bool of = (r->flags & 0x800) != 0;
-            if (!zf && sf == of) r->ip = (unsigned short)(r->ip + 4 + rel);
-            else                 r->ip += 4;
-            return 0;
-        }
-        case 0xB6: { // MOVZX r16, r/m8 — zero-extend byte to word
-            unsigned char modrm = mem[pc + 2];
-            unsigned short ip_off = r->ip + 3;
-            unsigned char src;
-            if (((modrm >> 6) & 3) == 3)
-                src = get_reg8(r, modrm & 7);
-            else {
-                unsigned int addr = get_effective_address(r, modrm, mem, ip_off);
-                src = mem[addr];
+                unsigned short old_sp = r->sp;
+                r->sp -= 2; write_mem16(mem, linear(r->ss, r->sp), r->ax);
+                r->sp -= 2; write_mem16(mem, linear(r->ss, r->sp), r->cx);
+                r->sp -= 2; write_mem16(mem, linear(r->ss, r->sp), r->dx);
+                r->sp -= 2; write_mem16(mem, linear(r->ss, r->sp), r->bx);
+                r->sp -= 2; write_mem16(mem, linear(r->ss, r->sp), old_sp);
+                r->sp -= 2; write_mem16(mem, linear(r->ss, r->sp), r->bp);
+                r->sp -= 2; write_mem16(mem, linear(r->ss, r->sp), r->si);
+                r->sp -= 2; write_mem16(mem, linear(r->ss, r->sp), r->di);
+                r->ip += 1; return 0;
             }
-            *reg16_by_index(r, (modrm >> 3) & 7) = (unsigned short)src;
-            r->ip = ip_off;
-            return 0;
-        }
-        default:
-            trace_fault(r, 0x0F, op2, -10);
-            return -10;
-    }
-}
+
+            case 0x61: { // POPA — pop tous les registres
+                r->di = read_mem16(mem, linear(r->ss, r->sp)); r->sp += 2;
+                r->si = read_mem16(mem, linear(r->ss, r->sp)); r->sp += 2;
+                r->bp = read_mem16(mem, linear(r->ss, r->sp)); r->sp += 2;
+                r->sp += 2;  // skip SP sauvegardé
+                r->bx = read_mem16(mem, linear(r->ss, r->sp)); r->sp += 2;
+                r->dx = read_mem16(mem, linear(r->ss, r->sp)); r->sp += 2;
+                r->cx = read_mem16(mem, linear(r->ss, r->sp)); r->sp += 2;
+                r->ax = read_mem16(mem, linear(r->ss, r->sp)); r->sp += 2;
+                r->ip += 1; return 0;
+            }
+
+
+
+            case 0x83: { // ADD/SUB/CMP r/m16, imm8 (signe-étendu)
+                unsigned char modrm = mem[pc + 1];
+                unsigned char subop = (modrm >> 3) & 7;
+                unsigned short ip_off = r->ip + 2;
+                unsigned short val = read_rm16(r, modrm, mem, ip_off);
+                signed char imm = (signed char)mem[linear(r->cs, ip_off)];
+                unsigned short result = val;
+                switch (subop) {
+                    case 0: result = val + (unsigned short)(signed short)imm; break; // ADD
+                    case 1: result = val | (unsigned short)(signed short)imm; break; // OR
+                    case 2: result = val + (unsigned short)(signed short)imm; break; // ADC (simplifié)
+                    case 3: result = val - (unsigned short)(signed short)imm; break; // SBB (simplifié)
+                    case 4: result = val & (unsigned short)(signed short)imm; break; // AND
+                    case 5: result = val - (unsigned short)(signed short)imm; break; // SUB
+                    case 6: result = val ^ (unsigned short)(signed short)imm; break; // XOR
+                    case 7: // CMP — pas d'écriture
+                        set_zf(r, val == (unsigned short)(signed short)imm);
+                        set_cf(r, val < (unsigned short)(signed short)imm);
+                        r->ip = ip_off + 1;
+                        return 0;
+                }
+                write_rm16(r, modrm, mem, ip_off, result);
+                set_zf(r, result == 0);
+                set_cf(r, result > 0xFFFF);
+                r->ip = ip_off + 1;
+                return 0;
+            }
+
+            case 0x67: { // Address size prefix (32 bit) — on ignore
+                r->ip += 1; return 0;
+            }
+
+            case 0xDD: { // FPU — coprocesseur flottant — on ignore
+                // Pour Word 5.0, on peut ignorer les instructions FPU
+                // et espérer qu'il n'en a pas besoin pour le rendu texte
+                unsigned char modrm = mem[pc + 1];
+                unsigned char mod = (modrm >> 6) & 3;
+                if (mod == 3) { r->ip += 2; }      // forme registre = 2 octets
+                else          { r->ip += 4; }      // forme mémoire = environ 4 octets
+                return 0;
+            }
+            case 0x06: { // PUSH ES
+                r->sp -= 2;
+                write_mem16(mem, linear(r->ss, r->sp), r->es);
+                r->ip += 1; return 0;
+            }
+
+            case 0x0E: { // PUSH CS
+                r->sp -= 2;
+                write_mem16(mem, linear(r->ss, r->sp), r->cs);
+                r->ip += 1; return 0;
+            }
+
+            case 0x16: { // PUSH SS
+                r->sp -= 2;
+                write_mem16(mem, linear(r->ss, r->sp), r->ss);
+                r->ip += 1; return 0;
+            }
+
+            case 0x1E: { // PUSH DS
+                r->sp -= 2;
+                write_mem16(mem, linear(r->ss, r->sp), r->ds);
+                r->ip += 1; return 0;
+            }
+
             case 0x90: r->ip += 1; return 0;
             case 0x75: { 
                 signed char rel = (signed char)mem[pc + 1];
