@@ -16,6 +16,8 @@ Guide :
   Then you have just to type make clean (clean build and nuke the old binaries) and then "make" alone without quotes, to generate the ISO.
 
   HOW TO BOOT THAT BS?
-  Uhh, that is hard to explain but the hardware supported for DOS64 is kinda undefined, as i tried on 2 real machine and that never worked properly, maybe i just don't have made all the drivers for that OS to work on real modern PCs.
+  Uhh, that is hard to explain but the hardware supported for DOS64 is kinda undefined, as i tried on 2 real machines (one is a laptop and the other one is a desktop PC) and that never worked properly, maybe i just don't have made all the drivers for that OS to work on real modern PCs.
+  However, you can boot it on VMs, as VMWare, VirtualBox and QEMU worked fine. just load the ISO as a "Other 64-bit" and i'll work fine ;).
+  
 
   
