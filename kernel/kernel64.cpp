@@ -656,15 +656,25 @@ static int run_resolved_path(const char* path, bool is_driver = false) {
         if (code == 0) {
             term->println("16-bit image loaded + relocations applied.");
             int dos_exit = 0;
-            code = mz_exe->execute_real_mode_stub(rm_mem, &regs, 50000000, &dos_exit); // le budget des cycles doit augmenter
+            code = mz_exe->execute_real_mode_stub(rm_mem, &regs, 50000000000000, &dos_exit); // le budget des cycles doit augmenter
             if (code == 0) {
                 current_program.running = false;
                 current_program.exit_code = dos_exit;
                 code = dos_exit;
-            } else if (code == -10 || code == -20 || code == -21) {
+                
+            } else if (code == -30) {
                 RMTraceState tr = mz_exe->get_last_trace();
                 char hex[32];
-                term->println("Real-mode fault trace:");
+                term->println("Infinite loop detected!");
+                term->print("  CS="); ulltoa(tr.cs, hex); term->println(hex);
+                term->print("  IP="); ulltoa(tr.ip, hex); term->println(hex);
+                term->print("  OPCODE=0x"); ulltoa(tr.opcode, hex); term->println(hex);
+                term->println("Word is waiting for something (keyboard? BIOS int?)");
+            }
+             else if (code == -10 || code == -20 || code == -21) {
+                RMTraceState tr = mz_exe->get_last_trace();
+                char hex[32];
+                term->println("ERR: Real-mode fault trace:");
                 term->print("  reason=");
                 ulltoa((unsigned long long)code, hex); term->println(hex);
                 term->print("  CS="); ulltoa((unsigned long long)tr.cs, hex); term->println(hex);
@@ -1455,6 +1465,8 @@ void interpret_command(const char* cmd) {
     }
 }
 
+/// @brief Point d'entrée du système
+/// @param mb_addr adresse du BSS attribuée par l'amorçeur
 extern "C" void kernel_main(unsigned long long mb_addr) {
 
     init(mb_addr);
