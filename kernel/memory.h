@@ -32,7 +32,7 @@ struct MultibootInfo {
 class MemorySystem {
 
     static const unsigned long long PAGE_SIZE = 4096;
-    static const unsigned long long MAX_PAGES = (8ULL * 1024ULL * 1024ULL * 1024ULL) / PAGE_SIZE; // 4 Gio max
+    static const unsigned long long MAX_PAGES = (8ULL * 1024ULL * 1024ULL * 1024ULL) / PAGE_SIZE; // 8 Gio max
 
     // Bitmap : 1 bit par page (1 = libre, 0 = utilisé)
     unsigned char bitmap[MAX_PAGES / 8];
