@@ -56,6 +56,10 @@ class Keyboard { // faite en sorte que les crochets sont bien mis ou je vous tue
     static const char FALLBACK_NORMAL[128];
     static const char FALLBACK_SHIFTED[128];
 
+    bool is_valid_char(unsigned char c) {
+        return c == '\n' || c == '\b' || c == '\t' || c == 27 || c >= 32;
+    }
+
     bool handle_modifier(unsigned char scancode) {
         switch (scancode) {
             case SC_LSHIFT:
@@ -89,11 +93,15 @@ class Keyboard { // faite en sorte que les crochets sont bien mis ou je vous tue
         }
 
         if (has_layout && layout) {
-            if (altgr && layout->altgr[scancode])
-                return (char)layout->altgr[scancode];
-            bool upper = shift ^ capslock;
-            return upper ? (char)layout->shifted[scancode]
-                         : (char)layout->normal[scancode];
+            unsigned char mapped = 0;
+            if (altgr && layout->altgr[scancode]) {
+                mapped = layout->altgr[scancode];
+            } else {
+                bool upper = shift ^ capslock;
+                mapped = upper ? layout->shifted[scancode]
+                               : layout->normal[scancode];
+            }
+            if (is_valid_char(mapped)) return (char)mapped;
         }
 
         bool upper = shift ^ capslock;
