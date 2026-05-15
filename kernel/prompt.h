@@ -31,6 +31,8 @@ public:
         if (c == '\n') {
             col = 0;
             row++;
+        } else if (c == '\r') {
+            col = 0;
         } else if (c == '\b') {
             if (col > 0) {
                 col--;
