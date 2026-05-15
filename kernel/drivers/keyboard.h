@@ -86,23 +86,19 @@ class Keyboard { // faite en sorte que les crochets sont bien mis ou je vous tue
                 case SC_DEL:   return KEY_DEL;
                 default:       return 0;
             }
-            // touches fléchés et autre
-            if (has_layout && layout) {
-                // Utiliser le layout chargé
-                if (altgr && layout->altgr[scancode])
-                    return (char)layout->altgr[scancode];
-                bool upper = shift ^ capslock;
-                if (upper)
-                    return (char)layout->shifted[scancode];
-                return (char)layout->normal[scancode];
-            }
-
-            // Fallback QWERTY
-            bool upper = shift ^ capslock;
-            return upper ? FALLBACK_SHIFTED[scancode]
-                        : FALLBACK_NORMAL[scancode];
         }
-        return 0X00;// je sais pas si ca marche mais juste pour que le compilateur ferme sa geule
+
+        if (has_layout && layout) {
+            if (altgr && layout->altgr[scancode])
+                return (char)layout->altgr[scancode];
+            bool upper = shift ^ capslock;
+            return upper ? (char)layout->shifted[scancode]
+                         : (char)layout->normal[scancode];
+        }
+
+        bool upper = shift ^ capslock;
+        return upper ? FALLBACK_SHIFTED[scancode]
+                     : FALLBACK_NORMAL[scancode];
     }
 
 public:
