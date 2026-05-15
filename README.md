@@ -2,6 +2,7 @@
 Free Open Source Command-line Operating System.
 Inspired and made to be compatible with MS-DOS
 <img width="320" height="200" alt="image" src="https://github.com/user-attachments/assets/de2e6e43-d867-48d2-a5d8-df78b53faa48" />
+
 PEOPLE ARE WELCOME TO CONTRIBUTE TO THE DEVELOPPEMENT AND IMPROVEMENT TO THAT PROJECT
 
 
