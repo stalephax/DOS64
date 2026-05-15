@@ -1,7 +1,7 @@
 #pragma once
-// Fonctions d'accès aux ports I/O
 
-
+/// @brief Fonctions d'accès aux ports I/O
+/// @author Rational Systems
 // Lire un octet depuis un port I/O
 static inline unsigned char inb(unsigned short port) {
     unsigned char val;

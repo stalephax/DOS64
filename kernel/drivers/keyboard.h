@@ -1,6 +1,13 @@
 #pragma once
 #include "io.h"
 
+#define KEY_UP    ((char)-1)
+#define KEY_DOWN  ((char)-2)
+#define KEY_LEFT  ((char)-3)
+#define KEY_RIGHT ((char)-4)
+#define KEY_HOME  ((char)-5)
+#define KEY_END   ((char)-6)
+#define KEY_DEL   ((char)-7)
 // ============================================================
 // Structure d'un fichier .KTT (Keyboard Translation Table)
 // ============================================================
@@ -24,13 +31,21 @@ static const unsigned char SC_CTRL_R   = 0x9D;
 static const unsigned char SC_ALT      = 0x38;
 static const unsigned char SC_ALTGR    = 0xE0;
 static const unsigned char SC_ALT_R    = 0xB8;
+static const unsigned char SC_UP       = 0x48;
+static const unsigned char SC_DOWN     = 0x50;
+static const unsigned char SC_LEFT     = 0x4B;
+static const unsigned char SC_RIGHT    = 0x4D;
+static const unsigned char SC_HOME     = 0x47;
+static const unsigned char SC_END      = 0x4F;
+static const unsigned char SC_DEL      = 0x53;
 
-class Keyboard {
+class Keyboard { // faite en sorte que les crochets sont bien mis ou je vous tue
     bool shift    = false;
     bool capslock = false;
     bool ctrl     = false;
     bool alt      = false;
     bool altgr    = false;
+    bool extended = false; // touches étendues 
 
     // Layout chargé en mémoire
     KTT_Header* layout    = nullptr;
@@ -59,20 +74,35 @@ class Keyboard {
     }
 
     char translate(unsigned char scancode) {
-        if (has_layout && layout) {
-            // Utiliser le layout chargé
-            if (altgr && layout->altgr[scancode])
-                return (char)layout->altgr[scancode];
-            bool upper = shift ^ capslock;
-            if (upper)
-                return (char)layout->shifted[scancode];
-            return (char)layout->normal[scancode];
-        }
+        if (extended) {
+            extended = false;
+            switch (scancode) {
+                case SC_UP:    return KEY_UP;
+                case SC_DOWN:  return KEY_DOWN;
+                case SC_LEFT:  return KEY_LEFT;
+                case SC_RIGHT: return KEY_RIGHT;
+                case SC_HOME:  return KEY_HOME;
+                case SC_END:   return KEY_END;
+                case SC_DEL:   return KEY_DEL;
+                default:       return 0;
+            }
+            // touches fléchés et autre
+            if (has_layout && layout) {
+                // Utiliser le layout chargé
+                if (altgr && layout->altgr[scancode])
+                    return (char)layout->altgr[scancode];
+                bool upper = shift ^ capslock;
+                if (upper)
+                    return (char)layout->shifted[scancode];
+                return (char)layout->normal[scancode];
+            }
 
-        // Fallback QWERTY
-        bool upper = shift ^ capslock;
-        return upper ? FALLBACK_SHIFTED[scancode]
-                     : FALLBACK_NORMAL[scancode];
+            // Fallback QWERTY
+            bool upper = shift ^ capslock;
+            return upper ? FALLBACK_SHIFTED[scancode]
+                        : FALLBACK_NORMAL[scancode];
+        }
+        return 0X00;// je sais pas si ca marche mais juste pour que le compilateur ferme sa geule
     }
 
 public:
@@ -106,8 +136,9 @@ public:
             unsigned char status   = inb(0x64);
             unsigned char scancode = inb(0x60);
             if (status & 0x20) continue;
+            if (scancode == 0xE0) { extended = true; continue; }
             if (handle_modifier(scancode)) continue;
-            if (scancode & 0x80) continue;
+            if (scancode & 0x80) { extended = false; continue; }
             char c = translate(scancode);
             if (c) return c;
         }
@@ -118,11 +149,13 @@ public:
         unsigned char status   = inb(0x64);
         unsigned char scancode = inb(0x60);
         if (status & 0x20) return 0;
+        if (scancode == 0xE0) { extended = true; return 0; }
         if (handle_modifier(scancode)) return 0;
-        if (scancode & 0x80) return 0;
+        if (scancode & 0x80) { extended = false; return 0; }
         return translate(scancode);
     }
 };
+
 
 // Layout QWERTY hardcodé en fallback
 const char Keyboard::FALLBACK_NORMAL[128] = {

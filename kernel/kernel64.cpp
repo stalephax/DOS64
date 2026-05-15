@@ -22,7 +22,7 @@
 #include "apicore/devtable.h"
 /*
 * KERNEL DOS64
-*   mis à jour le 22/04/2026
+*   mis à jour le 11/05/2026
 *      
 *   supporte : clavier I/O, 
 * VGA mode texte basique, 
@@ -194,7 +194,7 @@ static int mz_host_bios_int(unsigned char intn, RealModeRegs* r, void* ctx) {
 
     return -1;
 }
-
+// c'est quoi cette merde de __cxa_guard_acquire?
 static void mz_host_port_out(unsigned short port, unsigned char val, void* ctx) {
     (void)ctx;
     outb(port, val); 
@@ -655,8 +655,8 @@ static int run_resolved_path(const char* path, bool is_driver = false) {
         code = mz_exe->build_real_mode_image(buf, f.file_size, &rm_mem, &regs, &psp, &load_seg);
         if (code == 0) {
             term->println("16-bit image loaded + relocations applied.");
-            int dos_exit = 0;
-            code = mz_exe->execute_real_mode_stub(rm_mem, &regs, 50000000000000, &dos_exit); // le budget des cycles doit augmenter
+            int dos_exit = 0; //                                  v- juste pour que le compilateur ferme sa geule
+            code = mz_exe->execute_real_mode_stub(rm_mem, &regs, 2285707264, &dos_exit); // le budget des cycles doit augmenter
             if (code == 0) {
                 current_program.running = false;
                 current_program.exit_code = dos_exit;
@@ -729,7 +729,6 @@ static void cmd_help() {
     term->println("=== DOS64 Command Reference ===");
     term->set_color(WHITE);
     term->println("");
-
     term->set_color(YELLOW);  term->println("-- System --");
     term->set_color(WHITE);
     term->println("  HELP              Show this message");
@@ -738,8 +737,6 @@ static void cmd_help() {
     term->println("  ECHO [text]       Print text to screen");
     term->println("  SHUTUP [r]        Shutdown (or reboot with 'r')");
     term->println("  REBOOT            Reboot the machine");
-
-    term->set_color(YELLOW);  term->println("");
     term->set_color(YELLOW);  term->println("-- Disk & Filesystem --");
     term->set_color(WHITE); // bruh missing half of the important commands.
     term->println("  FATFS             Format a volume as FAT32 (Trusted Intaller mode required)");
@@ -753,9 +750,6 @@ static void cmd_help() {
     term->println("  RUN [file]        Load .ELF/.SYS/.EXE (EXE = 16-bit real-mode WIP)");
     term->println("  DVCMGR            List loaded drivers");
     term->println("  DVCMGR i [file]   Load a driver (.SYS/.ELF) now");
-    //term->println("  [file(.elf/.sys)] Execute program directly by typing its name"); useless, the first thing everyone has an idea of.
-
-    term->set_color(YELLOW);  term->println("");
     term->set_color(YELLOW);  term->println("-- Debug --");
     term->set_color(WHITE);
     term->println("  LAXATIVE          Dump memory map");
@@ -1465,78 +1459,237 @@ void interpret_command(const char* cmd) {
     }
 }
 
+/// @brief historique de la terminale DOS
+static const int HISTORY_SIZE = 16;
+static char history[HISTORY_SIZE][256];
+static int  history_count = 0;
+static int  history_head  = 0;  // index circulaire
+
+void history_add(const char* cmd) {
+    if (!cmd || !cmd[0]) return;
+    // Ne pas dupliquer la dernière entrée
+    int last = (history_head - 1 + HISTORY_SIZE) % HISTORY_SIZE;
+    if (history_count > 0 && strcmp(history[last], cmd) == 0) return;
+
+    for (int i = 0; cmd[i] && i < 255; i++)
+        history[history_head][i] = cmd[i];
+    history[history_head][strlen(cmd)] = '\0';
+
+    history_head = (history_head + 1) % HISTORY_SIZE;
+    if (history_count < HISTORY_SIZE) history_count++;
+}
+
+const char* history_get(int offset) {
+    // offset 1 = dernière commande, 2 = avant-dernière, etc.
+    if (offset < 1 || offset > history_count) return nullptr;
+    int idx = (history_head - offset + HISTORY_SIZE * 2) % HISTORY_SIZE;
+    return history[idx];
+}
+/* This will make history
+void history_add(const char* cmd) {
+    if (!cmd || !cmd[0]) return;
+    // Ne pas dupliquer la dernière entrée
+    int last = (history_head - 1 + HISTORY_SIZE) % HISTORY_SIZE;
+    if (history_count > 0 && strcmp(history[last], cmd) == 0) return;
+
+    for (int i = 0; cmd[i] && i < 255; i++)
+        history[history_head][i] = cmd[i];
+    history[history_head][strlen(cmd)] = '\0';
+
+    history_head = (history_head + 1) % HISTORY_SIZE;
+    if (history_count < HISTORY_SIZE) history_count++;
+}
+
+const char* history_get(int offset) {
+    // offset 1 = dernière commande, 2 = avant-dernière, etc.
+    if (offset < 1 || offset > history_count) return nullptr;
+    int idx = (history_head - offset + HISTORY_SIZE * 2) % HISTORY_SIZE;
+    return history[idx];
+}*/
+// INPUT LINE !!!!!!!!!!!!!
+struct InputLine {
+    char buf[256];
+    int  len     = 0;   // longueur du contenu
+    int  cursor  = 0;   // position du curseur (0 = début)
+    int  hist_pos = 0;  // 0 = saisie courante, 1+ = historique
+
+    char saved[256];    // sauvegarde de la saisie en cours
+    int  saved_len = 0;
+
+    void clear() {
+        for (int i = 0; i < 256; i++) buf[i] = 0;
+        len = cursor = hist_pos = 0;
+    }
+
+    void save() {
+        for (int i = 0; i <= len; i++) saved[i] = buf[i];
+        saved_len = len;
+    }
+
+    void restore() {
+        for (int i = 0; i <= saved_len; i++) buf[i] = saved[i];
+        len = cursor = saved_len;
+    }
+
+    void set(const char* s) {
+        len = 0;
+        while (s[len] && len < 255) { buf[len] = s[len]; len++; }
+        buf[len] = '\0';
+        cursor = len;
+    }
+
+    // Insérer un caractère à la position du curseur
+    void insert(char c) {
+        if (len >= 255) return;          // buffer full
+        for (int i = len; i > cursor; --i)
+            buf[i] = buf[i - 1];
+        buf[cursor++] = c;
+        buf[len] = '\0';
+        ++len;
+    }
+
+
+    // Supprimer le caractère avant le curseur (backspace)
+    void backspace() {
+        if (cursor <= 0) return;
+        for (int i = cursor-1; i < len-1; i++) buf[i] = buf[i+1];
+        buf[--len] = '\0';
+        cursor--;
+    }
+
+    // Supprimer le caractère sous le curseur (delete)
+    void del() {
+        if (cursor >= len) return;
+        for (int i = cursor; i < len-1; i++) buf[i] = buf[i+1];
+        buf[--len] = '\0';
+    }
+};
+void redraw_line(InputLine* line, const char* prompt_str) {
+    //term->putchar('\r'); pas ça
+
+    // Effacer la ligne (80 espaces)
+    for (int i = 0; i < 80; i++) term->putchar(' ');
+    term->putchar('\r');
+
+    // Réécrire le prompt
+    term->print(prompt_str);
+
+    // Réécrire le contenu
+    for (int i = 0; i < line->len; i++)
+        term->putchar(line->buf[i]);
+
+    // Replacer le curseur (retour arrière depuis la fin)
+    int back = line->len - line->cursor;
+    for (int i = 0; i < back; i++)
+        term->putchar('\b');
+}
+static InputLine promptLine;
 /// @brief Point d'entrée du système
 /// @param mb_addr adresse du BSS attribuée par l'amorçeur
 extern "C" void kernel_main(unsigned long long mb_addr) {
-
     init(mb_addr);
     term->clear();
-    term->set_color(GREEN);
-    term->println("DOS64 v0.1");
-    term->set_color(WHITE);
-    char prompt[32];
-    pm->get_prompt(prompt);
-    term->print(prompt);
-
-
-    // Buffer de saisie
-    static char input[256];
-    int i_writecurpos = 0; // position d'écriture
-    int input_len = 0;
-
     // Historique de saisie : 256 caractères max
+    int hist_pos = 0;
 
-    static char old_input[128][256];
-    int old_input_lengh;
-    
 
+    // le prompt ne fait que de foirer 
     while (power) {
-        cursor->update(mouse);
-
-        // Lire le clavier (non bloquant)
-        char c = kbd->poll();  // ← utilise poll() au lieu de getchar() !
-        if (!c) continue;
+        // prompter
         
-        if (c == '\n') {
-            // Terminer la chaîne
-            input[input_len] = '\0';
-            term->putchar('\n');
+        char prompt_str[32];
+        pm->get_prompt(prompt_str);
+        int prompt_len = strlen(prompt_str);
+        // Afficher le prompt au début de chaque saisie
+        term->set_color(LIGHT_GREEN);
+        term->print(prompt_str);
+        term->set_color(WHITE);
 
-            // Interpréter seulement si non vide
-            if (input_len > 0)
-                interpret_command(input);
+        promptLine.clear();
+        hist_pos = 0;
 
-            // Réinitialiser le buffer
-            input_len = 0;
-            // mettre à jour l'historique
-            old_input_lengh++;
-            old_input[old_input_lengh][256] = *input;
-            char prompt[32];
-            pm->get_prompt(prompt);
-            term->print(prompt);
+        // Boucle de saisie d'une ligne
+        while (true) {
+            // Mise à jour curseur souris
+            cursor->update(mouse);
 
-        } else if (c == '\b') {
-            // Backspace : effacer le dernier caractère
-            if (input_len > 0) {
-                input_len--;
-                term->putchar('\b');
-                i_writecurpos = input_len;
+            char c = kbd->poll();
+            if (!c) continue;
+            if (c == '\n') {
+                // Valider
+                promptLine.buf[promptLine.len] = '\0';
+                term->putchar('\n');
+                if (promptLine.len > 0) {
+                    history_add(promptLine.buf);
+                    interpret_command(promptLine.buf);
+                }
+                break;
+
+            } else if (c == '\b') {
+                if (promptLine.cursor > 0) {
+                    promptLine.backspace();
+                    redraw_line(&promptLine, prompt_str);
+                }
+
+            } else if (c == (char)KEY_DEL) {
+                if (promptLine.cursor < promptLine.len) {
+                    promptLine.del();
+                    redraw_line(&promptLine, prompt_str);
+                }
+
+            } else if (c == (char)KEY_LEFT) {
+                if (promptLine.cursor > 0) {
+                    promptLine.cursor--;
+                    term->putchar('\b');
+                }
+
+            } else if (c == (char)KEY_RIGHT) {
+                if (promptLine.cursor < promptLine.len) {
+                    term->putchar(promptLine.buf[promptLine.cursor]);
+                    promptLine.cursor++;
+                }
+
+            } else if (c == (char)KEY_HOME) {
+                while (promptLine.cursor > 0) {
+                    term->putchar('\b');
+                    promptLine.cursor--;
+                }
+
+            } else if (c == (char)KEY_END) {
+                while (promptLine.cursor < promptLine.len) {
+                    term->putchar(promptLine.buf[promptLine.cursor]);
+                    promptLine.cursor++;
+                }
+
+            } else if (c == (char)KEY_UP) {
+                // Historique — commande précédente
+                if (hist_pos == 0) promptLine.save();  // sauver saisie courante
+                hist_pos++;
+                const char* h = history_get(hist_pos);
+                if (h) {
+                    promptLine.set(h);
+                } else {
+                    hist_pos--;  // pas plus loin
+                }
+                redraw_line(&promptLine, prompt_str);
+
+            } else if (c == (char)KEY_DOWN) {
+                // Historique — commande suivante
+                if (hist_pos <= 0) continue;
+                hist_pos--;
+                if (hist_pos == 0) {
+                    promptLine.restore();  // revenir à la saisie en cours
+                } else {
+                    const char* h = history_get(hist_pos);
+                    if (h) promptLine.set(h);
+                }
+                redraw_line(&promptLine, prompt_str);
+
+            } else if (c >= 32 && c <= 126) {
+                // Caractère normal
+                promptLine.insert(c);
+                redraw_line(&promptLine, prompt_str);
             }
-            //term->update_cursor();
-        else if (c == '\t') { 
-            for (int c = 0; c < old_input_lengh; c++ ) {
-                term->putchar(*old_input[c]);
-            }
-        }
-
-        } else {
-            // Caractère normal : ajouter au buffer si pas plein
-            if (input_len < 255) {
-                input[input_len++] = c;
-                term->putchar(c);
-                i_writecurpos = input_len;
-            }
-            //term->update_cursor();
         }
     }
 }

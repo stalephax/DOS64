@@ -62,7 +62,7 @@ public:
             VGA[i] = (current_color << 8) | ' ';
         row = col = 0;
     }    
-
+    void setcol(int c) {col = c;}
     // met à jour le curseur VGA 
     void update_cursor() {
         unsigned short pos = row * WIDTH + col;
