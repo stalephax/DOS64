@@ -1506,189 +1506,28 @@ const char* history_get(int offset) {
     int idx = (history_head - offset + HISTORY_SIZE * 2) % HISTORY_SIZE;
     return history[idx];
 }*/
-// INPUT LINE !!!!!!!!!!!!!
-struct InputLine {
-    char buf[256];
-    int  len     = 0;   // longueur du contenu
-    int  cursor  = 0;   // position du curseur (0 = début)
-    int  hist_pos = 0;  // 0 = saisie courante, 1+ = historique
-
-    char saved[256];    // sauvegarde de la saisie en cours
-    int  saved_len = 0;
-
-    void clear() {
-        for (int i = 0; i < 256; i++) buf[i] = 0;
-        len = cursor = hist_pos = 0;
-    }
-
-    void save() {
-        for (int i = 0; i <= len; i++) saved[i] = buf[i];
-        saved_len = len;
-    }
-
-    void restore() {
-        for (int i = 0; i <= saved_len; i++) buf[i] = saved[i];
-        len = cursor = saved_len;
-    }
-
-    void set(const char* s) {
-        len = 0;
-        while (s[len] && len < 255) { buf[len] = s[len]; len++; }
-        buf[len] = '\0';
-        cursor = len;
-    }
-
-    // Insérer un caractère à la position du curseur
-    void insert(char c) {
-        if (len >= 255) return;          // buffer full
-        for (int i = len; i > cursor; --i)
-            buf[i] = buf[i - 1];
-        buf[cursor++] = c;
-        buf[len] = '\0';
-        ++len;
-    }
-
-
-    // Supprimer le caractère avant le curseur (backspace)
-    void backspace() {
-        if (cursor <= 0) return;
-        for (int i = cursor-1; i < len-1; i++) buf[i] = buf[i+1];
-        buf[--len] = '\0';
-        cursor--;
-    }
-
-    // Supprimer le caractère sous le curseur (delete)
-    void del() {
-        if (cursor >= len) return;
-        for (int i = cursor; i < len-1; i++) buf[i] = buf[i+1];
-        buf[--len] = '\0';
-    }
-};
-void redraw_line(InputLine* line, const char* prompt_str) {
-    //term->putchar('\r'); pas ça
-
-    // Effacer la ligne (80 espaces)
-    for (int i = 0; i < 80; i++) term->putchar(' ');
-    term->putchar('\r');
-
-    // Réécrire le prompt
-    term->print(prompt_str);
-
-    // Réécrire le contenu
-    for (int i = 0; i < line->len; i++)
-        term->putchar(line->buf[i]);
-
-    // Replacer le curseur (retour arrière depuis la fin)
-    int back = line->len - line->cursor;
-    for (int i = 0; i < back; i++)
-        term->putchar('\b');
-}
-static InputLine promptLine;
 /// @brief Point d'entrée du système
 /// @param mb_addr adresse du BSS attribuée par l'amorçeur
 extern "C" void kernel_main(unsigned long long mb_addr) {
     init(mb_addr);
     term->clear();
-    // Historique de saisie : 256 caractères max
-    int hist_pos = 0;
-
-
-    // le prompt ne fait que de foirer 
+    PromptSession shell(term);
     while (power) {
-        // prompter
-        
         char prompt_str[32];
         pm->get_prompt(prompt_str);
-        int prompt_len = strlen(prompt_str);
-        // Afficher le prompt au début de chaque saisie
-        term->set_color(LIGHT_GREEN);
-        term->print(prompt_str);
-        term->set_color(WHITE);
+        shell.begin(prompt_str);
+        char cmdline[256];
 
-        promptLine.clear();
-        hist_pos = 0;
-
-        // Boucle de saisie d'une ligne
         while (true) {
-            // Mise à jour curseur souris
             cursor->update(mouse);
-
             char c = kbd->poll();
             if (!c) continue;
-            if (c == '\n') {
-                // Valider
-                promptLine.buf[promptLine.len] = '\0';
-                term->putchar('\n');
-                if (promptLine.len > 0) {
-                    history_add(promptLine.buf);
-                    interpret_command(promptLine.buf);
+            if (shell.feed_key(c, prompt_str, history_get, cmdline)) {
+                if (cmdline[0]) {
+                    history_add(cmdline);
+                    interpret_command(cmdline);
                 }
                 break;
-
-            } else if (c == '\b') {
-                if (promptLine.cursor > 0) {
-                    promptLine.backspace();
-                    redraw_line(&promptLine, prompt_str);
-                }
-
-            } else if (c == (char)KEY_DEL) {
-                if (promptLine.cursor < promptLine.len) {
-                    promptLine.del();
-                    redraw_line(&promptLine, prompt_str);
-                }
-
-            } else if (c == (char)KEY_LEFT) {
-                if (promptLine.cursor > 0) {
-                    promptLine.cursor--;
-                    term->putchar('\b');
-                }
-
-            } else if (c == (char)KEY_RIGHT) {
-                if (promptLine.cursor < promptLine.len) {
-                    term->putchar(promptLine.buf[promptLine.cursor]);
-                    promptLine.cursor++;
-                }
-
-            } else if (c == (char)KEY_HOME) {
-                while (promptLine.cursor > 0) {
-                    term->putchar('\b');
-                    promptLine.cursor--;
-                }
-
-            } else if (c == (char)KEY_END) {
-                while (promptLine.cursor < promptLine.len) {
-                    term->putchar(promptLine.buf[promptLine.cursor]);
-                    promptLine.cursor++;
-                }
-
-            } else if (c == (char)KEY_UP) {
-                // Historique — commande précédente
-                if (hist_pos == 0) promptLine.save();  // sauver saisie courante
-                hist_pos++;
-                const char* h = history_get(hist_pos);
-                if (h) {
-                    promptLine.set(h);
-                } else {
-                    hist_pos--;  // pas plus loin
-                }
-                redraw_line(&promptLine, prompt_str);
-
-            } else if (c == (char)KEY_DOWN) {
-                // Historique — commande suivante
-                if (hist_pos <= 0) continue;
-                hist_pos--;
-                if (hist_pos == 0) {
-                    promptLine.restore();  // revenir à la saisie en cours
-                } else {
-                    const char* h = history_get(hist_pos);
-                    if (h) promptLine.set(h);
-                }
-                redraw_line(&promptLine, prompt_str);
-
-            } else if (c >= 32 && c <= 126) {
-                // Caractère normal
-                promptLine.insert(c);
-                redraw_line(&promptLine, prompt_str);
             }
         }
     }

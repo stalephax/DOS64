@@ -1,5 +1,6 @@
 #pragma once
 #include "drivers/io.h"
+#include "drivers/keyboard.h"
 
 class Terminal {
     int row = 0;
@@ -31,6 +32,8 @@ public:
         if (c == '\n') {
             col = 0;
             row++;
+        } else if (c == '\r') {
+            col = 0;
         } else if (c == '\b') {
             if (col > 0) {
                 col--;
@@ -70,6 +73,136 @@ public:
         outb(0x3D5, pos & 0xFF);
         outb(0x3D4, 0x0E);
         outb(0x3D5, (pos >> 8) & 0xFF);
+    }
+};
+
+struct PromptLine {
+    char buf[256];
+    int len;
+    int cursor;
+    char saved[256];
+    int saved_len;
+
+    void clear() {
+        for (int i = 0; i < 256; i++) { buf[i] = 0; saved[i] = 0; }
+        len = 0;
+        cursor = 0;
+        saved_len = 0;
+    }
+
+    void save() {
+        for (int i = 0; i <= len; i++) saved[i] = buf[i];
+        saved_len = len;
+    }
+
+    void restore() {
+        for (int i = 0; i <= saved_len; i++) buf[i] = saved[i];
+        len = saved_len;
+        cursor = len;
+    }
+
+    void set(const char* s) {
+        len = 0;
+        while (s[len] && len < 255) { buf[len] = s[len]; len++; }
+        buf[len] = '\0';
+        cursor = len;
+    }
+
+    void insert(char c) {
+        if (len >= 255) return;
+        for (int i = len; i > cursor; --i) buf[i] = buf[i - 1];
+        buf[cursor++] = c;
+        len++;
+        buf[len] = '\0';
+    }
+
+    void backspace() {
+        if (cursor <= 0) return;
+        for (int i = cursor - 1; i < len - 1; i++) buf[i] = buf[i + 1];
+        len--;
+        cursor--;
+        buf[len] = '\0';
+    }
+
+    void del() {
+        if (cursor >= len) return;
+        for (int i = cursor; i < len - 1; i++) buf[i] = buf[i + 1];
+        len--;
+        buf[len] = '\0';
+    }
+};
+
+class PromptSession {
+    Terminal* term;
+    PromptLine line;
+    int hist_pos = 0;
+
+    void redraw(const char* prompt_str) {
+        for (int i = 0; i < 80; i++) term->putchar(' ');
+        term->putchar('\r');
+        term->print(prompt_str);
+        for (int i = 0; i < line.len; i++) term->putchar(line.buf[i]);
+        int back = line.len - line.cursor;
+        for (int i = 0; i < back; i++) term->putchar('\b');
+    }
+
+public:
+    PromptSession(Terminal* t) : term(t) { line.clear(); }
+
+    void begin(const char* prompt_str) {
+        line.clear();
+        hist_pos = 0;
+        term->set_color(0x0A);
+        term->print(prompt_str);
+        term->set_color(0x0F);
+    }
+
+    bool feed_key(
+        char c,
+        const char* prompt_str,
+        const char* (*history_get_cb)(int),
+        char* out_line
+    ) {
+        if (c == '\n') {
+            line.buf[line.len] = '\0';
+            term->putchar('\n');
+            for (int i = 0; i <= line.len; i++) out_line[i] = line.buf[i];
+            return true;
+        } else if (c == '\b') {
+            line.backspace();
+            redraw(prompt_str);
+        } else if (c == (char)KEY_DEL) {
+            line.del();
+            redraw(prompt_str);
+        } else if (c == (char)KEY_LEFT) {
+            if (line.cursor > 0) { line.cursor--; term->putchar('\b'); }
+        } else if (c == (char)KEY_RIGHT) {
+            if (line.cursor < line.len) { term->putchar(line.buf[line.cursor]); line.cursor++; }
+        } else if (c == (char)KEY_HOME) {
+            while (line.cursor > 0) { term->putchar('\b'); line.cursor--; }
+        } else if (c == (char)KEY_END) {
+            while (line.cursor < line.len) { term->putchar(line.buf[line.cursor]); line.cursor++; }
+        } else if (c == (char)KEY_UP) {
+            if (hist_pos == 0) line.save();
+            hist_pos++;
+            const char* h = history_get_cb(hist_pos);
+            if (h) line.set(h);
+            else hist_pos--;
+            redraw(prompt_str);
+        } else if (c == (char)KEY_DOWN) {
+            if (hist_pos <= 0) return false;
+            hist_pos--;
+            if (hist_pos == 0) line.restore();
+            else {
+                const char* h = history_get_cb(hist_pos);
+                if (h) line.set(h);
+            }
+            redraw(prompt_str);
+        } else if (c >= 32 && c <= 126) {
+            line.insert(c);
+            redraw(prompt_str);
+        }
+        return false;
     }
 };
 
