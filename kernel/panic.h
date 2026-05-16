@@ -1,7 +1,7 @@
 #pragma once
 #include "drivers/io.h"
 #include "drivers/beep.h"
-// faute grave sur le CPU? pas de problème avec panic, on affiche un joli écran rouge avec les infos du CPU et on halt la machine
+// faute grave sur le CPU? pas de problème avec le frick-up screen, on affiche un joli écran rouge avec les infos du CPU et on halt la machine
 static unsigned short* const PANIC_VGA = (unsigned short*)0xB8000;
 
 static void panic_print(const char* str, int line, unsigned char color = 0x4F) {

@@ -11,7 +11,7 @@ struct Device {
     bool  active;
 };
 
-static const int MAX_DEVICES = 32;
+static const int MAX_DEVICES = 1080;
 
 class DeviceTable {
     Device devices[MAX_DEVICES];

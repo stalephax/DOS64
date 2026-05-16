@@ -299,7 +299,6 @@ void make_dir_entry(FAT32_DirEntry* e, const char* name,
     e->cluster_low   = cluster & 0xFFFF;
     e->file_size     = size;
 }
-
 // Trouver le cluster du répertoire parent d'un chemin
 unsigned int get_parent_cluster(const char* path, char* name_out) {
     // Ignorer préfixe volume

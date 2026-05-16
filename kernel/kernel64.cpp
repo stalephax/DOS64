@@ -326,7 +326,7 @@ void init(unsigned long long mb_addr) {
     print("DOS64 Boot Sequence", 0, t_color(LIGHT_CYAN));
     print("--------------------", 1, t_color(GRAY));
     power = true;
-    delay(6543458U);
+    delay(6543458U);delay(6543458U);
     // --------------------------------------------------------
     // PHASE 1 : Terminal (requis pour afficher quoi que ce soit après)
     // --------------------------------------------------------
@@ -726,7 +726,7 @@ static void register_loaded_driver(const char* path, int exit_code) {
 
 static void cmd_help() {
     term->set_color(LIGHT_CYAN);
-    term->println("=== DOS64 Command Reference ===");
+    term->println("░▒▓█ DOS64 Command Reference █▓▒░");
     term->set_color(WHITE);
     term->println("");
     term->set_color(YELLOW);  term->println("-- System --");
@@ -955,7 +955,7 @@ static void cmd_del(const char* path) {
 
     char resolved[256];
     pm->resolve(path, resolved);
-    if (fs->get_attributes(resolved) == -1) {
+    if (false) { // gonna skip that up for the moment
         term->print("THIS IS A DIRECTORY: ");
         term->println(path);
         return;
@@ -1335,12 +1335,13 @@ static void cmd_wraw(const char* data) {
 }
 
 static void cmd_gfx() {
+    term->println("GFX mode active. Restart to return to text mode.");
     vga = new (vga_buf) VGAGraphics;
     vga->init();
     vga->clear(VGAGraphics::BLACK);
     vga->fill_rect(10, 10, 100, 80, VGAGraphics::RED);
     vga->draw_line(0, 0, 319, 199, VGAGraphics::WHITE);
-    term->println("GFX mode active. Restart to return to text mode.");
+    
 }
 
 // ============================================================
@@ -1405,7 +1406,7 @@ void interpret_command(const char* cmd) {
             token_with_ext[i++] = 'E';
             token_with_ext[i++] = 'X';
             token_with_ext[i++] = 'E';
-            token_with_ext[i] = '\0';
+            token_with_ext[i]   = '\0';
 
             pm->resolve(token_with_ext, resolved);
             found = fat_file_exists(resolved);
@@ -1444,7 +1445,7 @@ void interpret_command(const char* cmd) {
     // Dans le dispatch :
     else if (strncmp(cmd, "rename ", 7) == 0)       cmd_rename(cmd + 7);
     else if (strncmp(cmd, "del ", 4) == 0)          cmd_del(cmd + 4);
-    else if (strncmp(cmd, "xcopy ", 5) == 0)     cmd_xcopy(cmd + 5); 
+    else if (strncmp(cmd, "xcopy ", 5) == 0)        cmd_xcopy(cmd + 5); 
     // --- Debug ---
     else if (strcmp(cmd, "laxative") == 0)          cmd_laxative();
     else if (strncmp(cmd, "wraw ", 5) == 0)         cmd_wraw(cmd + 5);
@@ -1485,32 +1486,21 @@ const char* history_get(int offset) {
     int idx = (history_head - offset + HISTORY_SIZE * 2) % HISTORY_SIZE;
     return history[idx];
 }
-/* This will make history
-void history_add(const char* cmd) {
-    if (!cmd || !cmd[0]) return;
-    // Ne pas dupliquer la dernière entrée
-    int last = (history_head - 1 + HISTORY_SIZE) % HISTORY_SIZE;
-    if (history_count > 0 && strcmp(history[last], cmd) == 0) return;
-
-    for (int i = 0; cmd[i] && i < 255; i++)
-        history[history_head][i] = cmd[i];
-    history[history_head][strlen(cmd)] = '\0';
-
-    history_head = (history_head + 1) % HISTORY_SIZE;
-    if (history_count < HISTORY_SIZE) history_count++;
-}
-
-const char* history_get(int offset) {
-    // offset 1 = dernière commande, 2 = avant-dernière, etc.
-    if (offset < 1 || offset > history_count) return nullptr;
-    int idx = (history_head - offset + HISTORY_SIZE * 2) % HISTORY_SIZE;
-    return history[idx];
-}*/
+/* This will make history*/
 /// @brief Point d'entrée du système
 /// @param mb_addr adresse du BSS attribuée par l'amorçeur
 extern "C" void kernel_main(unsigned long long mb_addr) {
     init(mb_addr);
     term->clear();
+    term->set_color(GREEN, BLACK);
+    term->println(" ---------                               ");
+    term->println(" | DOS64 | pre-alpha build 13 2026-05-15 ");
+    term->println(" ---------                               ");
+    /* Celui la dysfonctionne mais pg
+    term->println(" ┌───────┐   ");
+    term->println(" │ DOS64 │ pre-alpha build 13 2026-05-15 ");
+    term->println(" └───────┘   ");*/
+    term->set_color(WHITE, BLACK);
     PromptSession shell(term);
     while (power) {
         char prompt_str[32];

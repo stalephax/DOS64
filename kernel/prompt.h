@@ -42,8 +42,10 @@ public:
         } else {
             VGA[row * WIDTH + col] = (unsigned short)c | (current_color << 8);
             col++;
-            if (col >= WIDTH) { col = 0; row++; }
+            if (col >= WIDTH) { col = 0; //row++; celui qui remet ça je le tue
+                }
         }
+        
         if (row >= HEIGHT) scroll();
         update_cursor();
     }
@@ -92,6 +94,7 @@ struct PromptLine {
 
     void save() {
         for (int i = 0; i <= len; i++) saved[i] = buf[i];
+        buf[len] = '\0';
         saved_len = len;
     }
 
@@ -104,7 +107,7 @@ struct PromptLine {
     void set(const char* s) {
         len = 0;
         while (s[len] && len < 255) { buf[len] = s[len]; len++; }
-        buf[len] = '\0';
+        //buf[len] = '\0';
         cursor = len;
     }
 
@@ -113,7 +116,7 @@ struct PromptLine {
         for (int i = len; i > cursor; --i) buf[i] = buf[i - 1];
         buf[cursor++] = c;
         len++;
-        buf[len] = '\0';
+        //buf[len] = '\0';
     }
 
     void backspace() {
@@ -121,14 +124,14 @@ struct PromptLine {
         for (int i = cursor - 1; i < len - 1; i++) buf[i] = buf[i + 1];
         len--;
         cursor--;
-        buf[len] = '\0';
+        //buf[len] = '\0';
     }
 
     void del() {
         if (cursor >= len) return;
         for (int i = cursor; i < len - 1; i++) buf[i] = buf[i + 1];
         len--;
-        buf[len] = '\0';
+//        buf[len] = '\0';
     }
 };
 
@@ -139,7 +142,7 @@ class PromptSession {
 
     void redraw(const char* prompt_str) {
         for (int i = 0; i < 80; i++) term->putchar(' ');
-        term->putchar('\r');
+        term->putchar('\r'); 
         term->print(prompt_str);
         for (int i = 0; i < line.len; i++) term->putchar(line.buf[i]);
         int back = line.len - line.cursor;
