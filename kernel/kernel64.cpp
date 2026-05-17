@@ -146,7 +146,7 @@ bool power = false; // pour le moment on peut pas éteindre la machine, par manq
 static unsigned char devtable_buf[sizeof(DeviceTable)];
 DeviceTable* devtable;
 
-// Fonctions wrapper pour la KernelAPI
+// Fonctions wrapper pour le KernelAPI
 static int mz_host_bios_int(unsigned char intn, RealModeRegs* r, void* ctx) {
     if (intn == 0x10) { // Interruption Vidéo BIOS
         unsigned char ah = (unsigned char)(r->ax >> 8);
@@ -1341,7 +1341,6 @@ static void cmd_gfx() {
     vga->clear(VGAGraphics::BLACK);
     vga->fill_rect(10, 10, 100, 80, VGAGraphics::RED);
     vga->draw_line(0, 0, 319, 199, VGAGraphics::WHITE);
-    
 }
 
 // ============================================================
@@ -1496,10 +1495,12 @@ extern "C" void kernel_main(unsigned long long mb_addr) {
     term->println(" ---------                               ");
     term->println(" | DOS64 | pre-alpha build 13 2026-05-15 ");
     term->println(" ---------                               ");
-    /* Celui la dysfonctionne mais pg
+    /* 
+    Celui la dysfonctionne mais pg
     term->println(" ┌───────┐   ");
     term->println(" │ DOS64 │ pre-alpha build 13 2026-05-15 ");
-    term->println(" └───────┘   ");*/
+    term->println(" └───────┘   ");
+    */
     term->set_color(WHITE, BLACK);
     PromptSession shell(term);
     while (power) {

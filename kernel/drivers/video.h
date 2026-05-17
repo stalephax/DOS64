@@ -61,7 +61,7 @@ class VGAGraphics {
         outb(0x3C0, 0x20);  // Enable video
     }
 
-    // Mode texte 80x25 (mode 03h), sans BIOS.
+    // Mode texte 80x25 (mode 03h). Le BIOS est inutile
     void set_mode3h() {
         outb(0x3C2, 0x67);
 
@@ -155,13 +155,20 @@ public:
     }
 
     // Palette de couleurs standard VGA (index 0-15)
-    static const unsigned char BLACK   = 0;
-    static const unsigned char BLUE    = 1;
-    static const unsigned char GREEN   = 2;
-    static const unsigned char CYAN    = 3;
-    static const unsigned char RED     = 4;
-    static const unsigned char MAGENTA = 5;
-    static const unsigned char BROWN   = 6;
-    static const unsigned char WHITE   = 15;
-    static const unsigned char YELLOW  = 14;
+    static const unsigned char BLACK = 0x0;
+    static const unsigned char BLUE = 0x1;
+    static const unsigned char GREEN = 0x2;
+    static const unsigned char CYAN = 0x3;
+    static const unsigned char RED = 0x4;
+    static const unsigned char MAGENTA = 0x5;
+    static const unsigned char BROWN = 0x6;
+    static const unsigned char LIGHT = 0x7;
+    static const unsigned char GRAY = 0x8;
+    static const unsigned char LIGHT_BLUE = 0x9;
+    static const unsigned char LIGHT_GREEN = 0xA;
+    static const unsigned char LIGHT_CYAN = 0xB;
+    static const unsigned char LIGHT_RED = 0xC;
+    static const unsigned char LIGHT_MAGENTA = 0xD;
+    static const unsigned char YELLOW = 0xE;
+    static const unsigned char WHITE = 0xF;
 };
